@@ -2,6 +2,7 @@ import { useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   CalendarDays,
+  FileText,
   LayoutDashboard,
   Lightbulb,
   LogOut,
@@ -24,6 +25,7 @@ import { ThemeMenu } from './ThemeMenu';
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { to: '/content', label: 'Content', icon: FileText },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/results', label: 'Results', icon: TrendingUp },
   { to: '/suggestions', label: 'Suggestions', icon: Lightbulb },

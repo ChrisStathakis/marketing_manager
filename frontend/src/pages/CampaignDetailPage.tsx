@@ -1,14 +1,15 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle2, Circle, Lightbulb, ListTodo, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, FileText, Lightbulb, ListTodo, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ContentItemDialog } from '@/components/ContentItemDialog';
 import api from '@/lib/api';
 import { fetchList, fetchOne, qk } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, formatRoas, toDateInputValue } from '@/lib/format';
-import type { Campaign, DailyMetric, Suggestion, Task } from '@/lib/types';
+import type { Campaign, ContentItem, DailyMetric, Suggestion, Task } from '@/lib/types';
 import { Alert } from '@/ui/alert';
 import { Badge } from '@/ui/badge';
 import { Button, buttonVariants } from '@/ui/button';
@@ -18,7 +19,7 @@ import { EmptyState } from '@/ui/empty-state';
 import { Input } from '@/ui/input';
 import { Pagination } from '@/ui/pagination';
 import { Skeleton } from '@/ui/skeleton';
-import { CampaignStatusBadge, SuggestionKindBadge } from '@/ui/status-badge';
+import { CampaignStatusBadge, ContentStatusBadge, SuggestionKindBadge } from '@/ui/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/tabs';
 
@@ -78,11 +79,15 @@ export default function CampaignDetailPage() {
       <Tabs defaultValue="results">
         <TabsList>
           <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="content">Content</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
         </TabsList>
         <TabsContent value="results">
           <ResultsTab campaignId={campaignId} />
+        </TabsContent>
+        <TabsContent value="content">
+          <ContentTab campaignId={campaignId} />
         </TabsContent>
         <TabsContent value="tasks">
           <TasksTab campaignId={campaignId} />
@@ -91,6 +96,101 @@ export default function CampaignDetailPage() {
           <SuggestionsTab campaignId={campaignId} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ContentTab({ campaignId }: { campaignId: number }) {
+  const qc = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [dialog, setDialog] = useState<{ open: boolean; item: ContentItem | null }>({ open: false, item: null });
+  const [deleting, setDeleting] = useState<ContentItem | null>(null);
+  const pageSize = 25;
+  const params = { campaign: campaignId, page, page_size: pageSize, ordering: '-publish_at' };
+  const list = useQuery({
+    queryKey: qk.content(params),
+    queryFn: () => fetchList<ContentItem>('/content/', params),
+    placeholderData: keepPreviousData,
+  });
+  const remove = useMutation({
+    mutationFn: async (item: ContentItem) => api.delete(`/content/${item.id}/`),
+    onSuccess: () => {
+      setDeleting(null);
+      qc.invalidateQueries({ queryKey: ['content'] });
+      toast.success('Content item deleted');
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+  const rows = list.data?.results ?? [];
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Planned and published content for this campaign{list.data ? ` (${list.data.count})` : ''}.
+        </p>
+        <Button size="sm" onClick={() => setDialog({ open: true, item: null })}>
+          <Plus /> New content
+        </Button>
+      </div>
+      {list.isLoading ? (
+        <Skeleton className="h-40" />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No content planned"
+          description="Plan the posts, stories and ads that will run for this campaign."
+          action={<Button onClick={() => setDialog({ open: true, item: null })}>New content</Button>}
+        />
+      ) : (
+        <>
+          <ul className="grid gap-2">
+            {rows.map((item) => (
+              <li key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">{formatDateTime(item.publish_at)}</p>
+                </div>
+                <ContentStatusBadge status={item.status} />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="Content actions">
+                      ⋯
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setDialog({ open: true, item })}>
+                      <Pencil /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(item)}>
+                      <Trash2 /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            ))}
+          </ul>
+          <Pagination page={page} pageSize={pageSize} count={list.data?.count ?? 0} onPageChange={setPage} />
+        </>
+      )}
+
+      <ContentItemDialog
+        open={dialog.open}
+        onOpenChange={(open) => setDialog((s) => ({ ...s, open }))}
+        item={dialog.item}
+        defaultCampaignId={campaignId}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete content item?"
+        description={deleting ? `"${deleting.title}" will be removed permanently.` : undefined}
+        confirmLabel="Delete"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => deleting && remove.mutate(deleting)}
+      />
     </div>
   );
 }

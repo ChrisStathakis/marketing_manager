@@ -8,6 +8,7 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CampaignsPage = lazy(() => import('./pages/CampaignsPage'));
 const CampaignDetailPage = lazy(() => import('./pages/CampaignDetailPage'));
+const ContentPage = lazy(() => import('./pages/ContentPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ResultsPage = lazy(() => import('./pages/ResultsPage'));
 const SuggestionsPage = lazy(() => import('./pages/SuggestionsPage'));
@@ -25,6 +26,7 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="campaigns" element={<CampaignsPage />} />
             <Route path="campaigns/:id" element={<CampaignDetailPage />} />
+            <Route path="content" element={<ContentPage />} />
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="results" element={<ResultsPage />} />
             <Route path="suggestions" element={<SuggestionsPage />} />
