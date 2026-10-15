@@ -1,17 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
+import { SuggestionCard } from '@/components/SuggestionCard';
 import { fetchList, qk } from '@/lib/data';
-import { formatDateTime } from '@/lib/format';
 import type { Campaign, Suggestion } from '@/lib/types';
-import { Badge } from '@/ui/badge';
 import { EmptyState } from '@/ui/empty-state';
 import { Pagination } from '@/ui/pagination';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/select';
 import { Skeleton } from '@/ui/skeleton';
-import { SuggestionKindBadge } from '@/ui/status-badge';
 
 const PAGE_SIZE = 20;
 
@@ -114,30 +111,8 @@ export default function SuggestionsPage() {
         <>
           <ul className="grid gap-3">
             {rows.map((s) => (
-              <li key={s.id} className="rounded-xl border border-border bg-card p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <SuggestionKindBadge kind={s.kind} />
-                  <strong className="text-sm font-semibold">{s.title}</strong>
-                  {s.accepted && <Badge variant="success">Accepted</Badge>}
-                  <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(s.created_at)}</span>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">{s.text}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Campaign:{' '}
-                  <Link to={`/campaigns/${s.campaign}`} className="font-medium text-primary hover:underline">
-                    {campaignNames.get(s.campaign) ?? `#${s.campaign}`}
-                  </Link>
-                </p>
-                {s.input_snapshot && Object.keys(s.input_snapshot).length > 0 && (
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                      Why this suggestion?
-                    </summary>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 text-xs">
-                      {JSON.stringify(s.input_snapshot, null, 2)}
-                    </pre>
-                  </details>
-                )}
+              <li key={s.id}>
+                <SuggestionCard suggestion={s} campaignName={campaignNames.get(s.campaign)} />
               </li>
             ))}
           </ul>

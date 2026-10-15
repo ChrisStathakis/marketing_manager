@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ContentItemDialog } from '@/components/ContentItemDialog';
+import { SuggestionCard } from '@/components/SuggestionCard';
 import api from '@/lib/api';
 import { fetchList, fetchOne, qk } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
@@ -19,7 +20,7 @@ import { EmptyState } from '@/ui/empty-state';
 import { Input } from '@/ui/input';
 import { Pagination } from '@/ui/pagination';
 import { Skeleton } from '@/ui/skeleton';
-import { CampaignStatusBadge, ContentStatusBadge, SuggestionKindBadge } from '@/ui/status-badge';
+import { CampaignStatusBadge, ContentStatusBadge } from '@/ui/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/tabs';
 
@@ -471,24 +472,8 @@ function SuggestionsTab({ campaignId }: { campaignId: number }) {
         <>
           <ul className="grid gap-3">
             {rows.map((s) => (
-              <li key={s.id} className="rounded-xl border border-border bg-card p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <SuggestionKindBadge kind={s.kind} />
-                  <strong className="text-sm font-semibold">{s.title}</strong>
-                  {s.accepted && <Badge variant="success">Accepted</Badge>}
-                  <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(s.created_at)}</span>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">{s.text}</p>
-                {s.input_snapshot && Object.keys(s.input_snapshot).length > 0 && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                      Why this suggestion?
-                    </summary>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 text-xs">
-                      {JSON.stringify(s.input_snapshot, null, 2)}
-                    </pre>
-                  </details>
-                )}
+              <li key={s.id}>
+                <SuggestionCard suggestion={s} linkCampaign={false} />
               </li>
             ))}
           </ul>

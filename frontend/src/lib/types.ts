@@ -72,6 +72,13 @@ export interface Task {
   created_at: string;
 }
 
+export interface SuggestionTaskRef {
+  id: number;
+  title: string;
+  done: boolean;
+  due_date: string | null;
+}
+
 export interface Suggestion {
   id: number;
   campaign: number;
@@ -81,6 +88,7 @@ export interface Suggestion {
   input_snapshot: Record<string, unknown>;
   accepted: boolean;
   created_at: string;
+  task: SuggestionTaskRef | null;
 }
 
 export interface CampaignSummary {
