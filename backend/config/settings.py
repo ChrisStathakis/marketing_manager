@@ -5,9 +5,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(BASE_DIR := Path(__file__).resolve().parent.parent)
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load backend/.env before anything reads os.environ. Note: a directory is not
+# a valid dotenv path, so it must point at the file itself.
+load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-only-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
@@ -116,8 +118,14 @@ REST_FRAMEWORK = {
     ),
 }
 
-# CORS (dev: allow all)
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS (dev default: allow all). For deploy set DJANGO_CORS_ALLOW_ALL=False
+# and list origins in DJANGO_CORS_ORIGINS (comma-separated).
+CORS_ALLOW_ALL_ORIGINS = os.environ.get("DJANGO_CORS_ALLOW_ALL", "True").lower() in ("1", "true", "yes")
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("DJANGO_CORS_ORIGINS", "").split(",") if o.strip()]
+
+# Auth policy. This app is meant for a single admin; public registration is
+# opt-in via DJANGO_ALLOW_REGISTRATION=True.
+ALLOW_REGISTRATION = os.environ.get("DJANGO_ALLOW_REGISTRATION", "False").lower() in ("1", "true", "yes")
 
 # SimpleJWT
 SIMPLE_JWT = {

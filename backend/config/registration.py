@@ -1,4 +1,8 @@
-"""Public user registration (AllowAny). Returns JWT pair on success."""
+"""Public user registration (AllowAny, disabled unless settings.ALLOW_REGISTRATION).
+
+Returns a JWT pair on success so the new user is signed in immediately.
+"""
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers, status
@@ -32,6 +36,11 @@ class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if not settings.ALLOW_REGISTRATION:
+            return Response(
+                {"detail": "Registration is disabled. Set DJANGO_ALLOW_REGISTRATION=True to enable it."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         ser = RegisterSerializer(data=request.data)
         if not ser.is_valid():
             return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)

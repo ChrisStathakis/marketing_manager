@@ -1,10 +1,18 @@
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
+from django.test import override_settings
+
 from campaigns.models import Campaign
 from results.models import DailyMetric
 
 
 class RegisterTests(APITestCase):
+    def test_register_disabled_by_default(self):
+        with override_settings(ALLOW_REGISTRATION=False):
+            r = self.client.post("/api/register/", {"username": "nope", "password": "1234"}, format="json")
+        self.assertEqual(r.status_code, 403, r.content)
+
+    @override_settings(ALLOW_REGISTRATION=True)
     def test_register_with_short_password_and_login(self):
         r = self.client.post("/api/register/", {"username": "newbie", "password": "1234"}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
@@ -12,6 +20,7 @@ class RegisterTests(APITestCase):
         t = self.client.post("/api/token/", {"username": "newbie", "password": "1234"}, format="json")
         self.assertEqual(t.status_code, 200, t.content)
 
+    @override_settings(ALLOW_REGISTRATION=True)
     def test_register_duplicate_username_rejected(self):
         self.client.post("/api/register/", {"username": "dupe", "password": "1234"}, format="json")
         r = self.client.post("/api/register/", {"username": "dupe", "password": "1234"}, format="json")
@@ -38,3 +47,16 @@ class CampaignFlowTests(APITestCase):
         d = self.client.get("/api/dashboard/summary/")
         self.assertEqual(d.status_code, 200)
         self.assertEqual(d.data["revenue"], 120.0)
+
+
+class HealthConfigTests(APITestCase):
+    def test_health_reports_database(self):
+        r = self.client.get("/api/health/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["ok"])
+        self.assertTrue(r.data["database"])
+
+    def test_config_is_public(self):
+        r = self.client.get("/api/config/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("registration_enabled", r.data)

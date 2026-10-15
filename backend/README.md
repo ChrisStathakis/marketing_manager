@@ -17,5 +17,14 @@ Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions). 
 
 ```powershell
 .\.venv\Scripts\python.exe backend\manage.py check
-.\.venv\Scripts\python.exe backend\manage.py test campaigns -v 2
+
+# Bare `test` discovers nothing when run from the repo root; pass app labels:
+.\.venv\Scripts\python.exe backend\manage.py test campaigns results ads -v 1
+
+# Or run from inside backend/ to execute everything:
+cd backend
+..\.venv\Scripts\python.exe manage.py test
 ```
+
+`backend/.env` is read at startup (`DJANGO_*`, `OPENAI_API_KEY`, `JWT_*`).
+Registration is disabled unless `DJANGO_ALLOW_REGISTRATION=True`.

@@ -6,8 +6,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from config.csv_import import import_response, run_import
+
 from .models import AdSpend
-from .serializers import AdSpendSerializer
+from .serializers import AdSpendImportRowSerializer, AdSpendSerializer
 
 
 class AdSpendViewSet(viewsets.ModelViewSet):
@@ -16,6 +18,8 @@ class AdSpendViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filterset_fields = ["campaign", "channel", "date"]
     ordering_fields = ["date", "spend"]
+
+    SPEND_FIELDS = ("spend", "impressions", "clicks", "conversions")
 
     @action(detail=False, methods=["post"], url_path="import-csv")
     def import_csv(self, request):
@@ -26,25 +30,17 @@ class AdSpendViewSet(viewsets.ModelViewSet):
             text = upload.read().decode("utf-8-sig")
         except Exception:
             return Response({"detail": "unreadable file."}, status=status.HTTP_400_BAD_REQUEST)
-        reader = csv.DictReader(io.StringIO(text))
-        created = updated = 0
-        for row in reader:
-            try:
-                campaign_id = int(row.get("campaign") or row.get("campaign_id") or 0)
-                channel_id = row.get("channel") or row.get("channel_id") or None
-                obj, was_created = AdSpend.objects.update_or_create(
-                    campaign_id=campaign_id,
-                    channel_id=int(channel_id) if channel_id else None,
-                    date=row["date"],
-                    defaults={
-                        "spend": row.get("spend") or 0,
-                        "impressions": row.get("impressions") or 0,
-                        "clicks": row.get("clicks") or 0,
-                        "conversions": row.get("conversions") or 0,
-                    },
-                )
-                created += 1 if was_created else 0
-                updated += 0 if was_created else 1
-            except Exception:
-                continue
-        return Response({"created": created, "updated": updated})
+
+        def apply_row(row):
+            _, was_created = AdSpend.objects.update_or_create(
+                campaign=row["campaign"],
+                channel=row.get("channel"),
+                date=row["date"],
+                defaults={field: row[field] for field in self.SPEND_FIELDS},
+            )
+            return was_created
+
+        created, updated, errors = run_import(
+            csv.DictReader(io.StringIO(text)), AdSpendImportRowSerializer, apply_row
+        )
+        return Response(import_response(created, updated, errors))

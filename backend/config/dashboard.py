@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.db import connection
 from django.db.models import Sum
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -39,4 +41,16 @@ def summary(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
-    return Response({"ok": True})
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except Exception:
+        return Response({"ok": False, "database": False}, status=503)
+    return Response({"ok": True, "database": True})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_config(request):
+    """Non-secret runtime flags the frontend needs before login."""
+    return Response({"registration_enabled": settings.ALLOW_REGISTRATION})

@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from ads.views import AdSpendViewSet
 from campaigns.views import CampaignViewSet
 from channels.views import ChannelViewSet
-from config.dashboard import health, summary
+from config.dashboard import health, public_config, summary
 from config.registration import RegisterView
 from content.views import ContentItemViewSet
 from plans.views import TaskViewSet
@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/", include(router.urls)),
     path("api/dashboard/summary/", summary),
     path("api/health/", health),
+    path("api/config/", public_config),
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),
