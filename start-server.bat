@@ -1,4 +1,5 @@
 @echo off
+setlocal
 REM Basket Campaign Manager - start backend + frontend dev servers
 cd /d "%~dp0"
 
@@ -25,6 +26,23 @@ if not exist "backend\.env" (
 echo [1/2] Starting Django API on http://127.0.0.1:8000 ...
 start "basket-backend" cmd /k ".\.venv\Scripts\python.exe backend\manage.py migrate && .\.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8000"
 
+echo Waiting for the API to report healthy (max 30s) ...
+set /a tries=0
+:waithealth
+set /a tries+=1
+curl -s -f -o nul http://127.0.0.1:8000/api/health/ 2>nul
+if not errorlevel 1 goto healthok
+if %tries% geq 30 (
+  echo [WARN] API did not become healthy within 30s - starting the frontend anyway.
+  goto startfrontend
+)
+timeout /t 1 /nobreak >nul
+goto waithealth
+
+:healthok
+echo API is healthy.
+
+:startfrontend
 if exist "frontend\package.json" (
   echo [2/2] Starting Vite frontend on http://127.0.0.1:5173 ...
   start "basket-frontend" /d "frontend" cmd /k "npm run dev -- --port 5173 --host 127.0.0.1"
@@ -35,3 +53,4 @@ if exist "frontend\package.json" (
 timeout /t 3 /nobreak >nul
 start "" "http://127.0.0.1:5173"
 echo Done. Close the opened windows to stop the servers.
+endlocal

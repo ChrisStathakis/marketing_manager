@@ -11,7 +11,7 @@ Django + DRF + SimpleJWT. ORM only, no raw SQL.
 .\.venv\Scripts\python.exe backend\manage.py runserver
 ```
 
-Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions). `DATABASE_URL` documented for Postgres (requires `dj-database-url`, not installed).
+Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions). Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` (parsed by `dj-database-url`, installed via requirements); SQLite is the fallback.
 
 ## Checks
 

@@ -35,20 +35,28 @@ Open `http://localhost:5173`, login with the Django superuser. API at `http://12
 
 ## Key endpoints
 
-- `POST /api/token/` login, `/api/campaigns/`, `/api/metrics/` + `/import-csv/`, `/api/spend/` + `/import-csv/`
-- `POST /api/suggestions/generate/` rules (always works), `POST /api/suggestions/generate-ai/` needs `OPENAI_API_KEY`
-- `GET /api/dashboard/summary/`, `GET /api/health/`, `GET /api/config/`
+See `docs/api-reference.md` for the full list (pagination, filters, CSV).
+
+- `POST /api/token/` login, `/api/campaigns/`, `/api/metrics/` + `/import-csv/` + `/export-csv/`, `/api/spend/` + `/import-csv/` + `/export-csv/`
+- `POST /api/suggestions/generate/` rules (always works), `POST /api/suggestions/generate-ai/` needs `OPENAI_API_KEY`, `POST /api/suggestions/{id}/accept/` turns one into a task
+- `GET /api/dashboard/summary/` (`?days=30` or `?date__gte/date__lte`), `GET /api/health/`, `GET /api/config/`
 
 ## Tests
 
 ```powershell
-# From the repo root (app labels required):
-.\.venv\Scripts\python.exe backend\manage.py test campaigns results ads
+# From backend/ this runs the whole suite:
+cd backend
+..\.venv\Scripts\python.exe manage.py test
 ```
+
+Frontend checks (type-check, lint, build) run the same way CI does: `cd frontend; npx tsc -p tsconfig.app.json --noEmit; npm run lint; npm run build`.
+
+## CI
+
+`.github/workflows/ci.yml` runs the backend suite (SQLite) and the frontend type-check + lint + build on every push and PR.
 
 ## Notes
 
 - Public registration is disabled by default (single-admin app). Set `DJANGO_ALLOW_REGISTRATION=True` in `backend\.env` to allow `/api/register/`.
-- Frontend chunk >500kB warning is Recharts; code-split later if needed.
-- Tailwind was skipped after an npm registry SSL failure; UI uses modern plain CSS. Add Tailwind v4 (`tailwindcss @tailwindcss/vite`) when network allows.
+- Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` in `backend\.env` (parsed with `dj-database-url`; SQLite is the fallback).
 - AI suggestions run server-side only; never put API keys in `VITE_*` vars.

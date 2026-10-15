@@ -70,17 +70,18 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Database: SQLite for dev. For Postgres set DATABASE_URL, e.g.
 # DATABASE_URL=postgres://user:pass@localhost:5432/dbname
-# (requires dj-database-url or manual parsing — see comment below).
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
-# To use Postgres via DATABASE_URL, install dj-database-url and uncomment:
-# import dj_database_url
-# if os.environ.get("DATABASE_URL"):
-#     DATABASES["default"] = dj_database_url.parse(os.environ["DATABASE_URL"])
+if os.environ.get("DATABASE_URL"):
+    import dj_database_url
+
+    DATABASES["default"] = dj_database_url.parse(
+        os.environ["DATABASE_URL"], conn_max_age=600, conn_health_checks=True
+    )
 
 AUTH_PASSWORD_VALIDATORS = [
     {
