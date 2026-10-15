@@ -8,10 +8,14 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  Package,
+  Radio,
   Settings,
   ShoppingBasket,
+  ShoppingCart,
   TrendingUp,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -22,15 +26,39 @@ import { Button } from '@/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/ui/dropdown-menu';
 import { ThemeMenu } from './ThemeMenu';
 
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { to: '/content', label: 'Content', icon: FileText },
-  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { to: '/results', label: 'Results', icon: TrendingUp },
-  { to: '/suggestions', label: 'Suggestions', icon: Lightbulb },
-  { to: '/settings', label: 'Settings', icon: Settings },
-] as const;
+interface NavSection {
+  label?: string;
+  items: { to: string; label: string; icon: LucideIcon; end?: boolean }[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
+      { to: '/content', label: 'Content', icon: FileText },
+      { to: '/calendar', label: 'Calendar', icon: CalendarDays },
+    ],
+  },
+  {
+    label: 'Measure',
+    items: [
+      { to: '/results', label: 'Results', icon: TrendingUp },
+      { to: '/suggestions', label: 'Suggestions', icon: Lightbulb },
+    ],
+  },
+  {
+    label: 'Shop',
+    items: [
+      { to: '/products', label: 'Products', icon: Package },
+      { to: '/orders', label: 'Orders', icon: ShoppingCart },
+      { to: '/channels', label: 'Channels', icon: Radio },
+    ],
+  },
+  {
+    items: [{ to: '/settings', label: 'Settings', icon: Settings }],
+  },
+];
 
 function Brand() {
   return (
@@ -45,25 +73,34 @@ function Brand() {
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="flex flex-col gap-1" aria-label="Main">
-      {NAV.map(({ to, label, icon: Icon, ...rest }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={'end' in rest ? rest.end : undefined}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-            )
-          }
-        >
-          <Icon className="size-4 shrink-0" aria-hidden />
-          {label}
-        </NavLink>
+    <nav className="flex flex-col gap-2" aria-label="Main">
+      {NAV_SECTIONS.map((section, index) => (
+        <div key={section.label ?? index} className="flex flex-col gap-1">
+          {section.label && (
+            <p className="px-3 pt-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+              {section.label}
+            </p>
+          )}
+          {section.items.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )
+              }
+            >
+              <Icon className="size-4 shrink-0" aria-hidden />
+              {label}
+            </NavLink>
+          ))}
+        </div>
       ))}
     </nav>
   );

@@ -38,7 +38,7 @@ export default function ContentPage() {
     queryFn: () => fetchList<Campaign>('/campaigns/', { page_size: 200, ordering: 'name' }),
   });
   const channels = useQuery({
-    queryKey: qk.channels,
+    queryKey: qk.channels({ page_size: 200 }),
     queryFn: () => fetchList<Channel>('/channels/', { page_size: 200, ordering: 'name' }),
   });
   const campaignNames = useMemo(

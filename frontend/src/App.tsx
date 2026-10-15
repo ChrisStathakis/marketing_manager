@@ -12,6 +12,9 @@ const ContentPage = lazy(() => import('./pages/ContentPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ResultsPage = lazy(() => import('./pages/ResultsPage'));
 const SuggestionsPage = lazy(() => import('./pages/SuggestionsPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const ChannelsPage = lazy(() => import('./pages/ChannelsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -30,6 +33,9 @@ export default function App() {
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="results" element={<ResultsPage />} />
             <Route path="suggestions" element={<SuggestionsPage />} />
+            <Route path="products" element={<ProductsPage />} />
+            <Route path="orders" element={<OrdersPage />} />
+            <Route path="channels" element={<ChannelsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />

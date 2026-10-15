@@ -363,7 +363,7 @@ function SpendSection() {
   const qc = useQueryClient();
   const { campaigns, campaignNames } = useCampaignOptions();
   const channels = useQuery({
-    queryKey: qk.channels,
+    queryKey: qk.channels({ page_size: 200 }),
     queryFn: () => fetchList<Channel>('/channels/', { page_size: 200, ordering: 'name' }),
   });
   const channelNames = useMemo(

@@ -67,7 +67,7 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
     enabled: open,
   });
   const channels = useQuery({
-    queryKey: qk.channels,
+    queryKey: qk.channels({ page_size: 200 }),
     queryFn: () => fetchList<Channel>('/channels/', { page_size: 200, ordering: 'name' }),
     enabled: open,
   });
