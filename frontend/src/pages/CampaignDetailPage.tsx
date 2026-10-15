@@ -1,16 +1,17 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle2, Circle, Download, FileText, Lightbulb, ListTodo, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, Download, FileText, Lightbulb, ListTodo, Pause, Pencil, Play, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { CampaignDialog } from '@/components/CampaignDialog';
 import { ContentItemDialog } from '@/components/ContentItemDialog';
 import { SuggestionCard } from '@/components/SuggestionCard';
 import api from '@/lib/api';
 import { fetchList, fetchOne, qk, downloadCsv } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, formatRoas, toDateInputValue } from '@/lib/format';
-import type { Campaign, ContentItem, DailyMetric, Suggestion, Task } from '@/lib/types';
+import type { Campaign, CampaignStatus, ContentItem, DailyMetric, Suggestion, Task } from '@/lib/types';
 import { Alert } from '@/ui/alert';
 import { Badge } from '@/ui/badge';
 import { Button, buttonVariants } from '@/ui/button';
@@ -31,11 +32,37 @@ export default function CampaignDetailPage() {
   const params = useParams();
   const campaignId = Number(params.id);
   const valid = Number.isFinite(campaignId) && campaignId > 0;
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const campaign = useQuery({
     queryKey: qk.campaign(campaignId),
     queryFn: () => fetchOne<Campaign>(`/campaigns/${campaignId}/`),
     enabled: valid,
+  });
+
+  const setStatus = useMutation({
+    mutationFn: async (next: CampaignStatus) => (await api.patch(`/campaigns/${campaignId}/`, { status: next })).data,
+    onSuccess: (_data, next) => {
+      qc.invalidateQueries({ queryKey: ['campaign', campaignId] });
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success(`Campaign marked ${next}`);
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => api.delete(`/campaigns/${campaignId}/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Campaign deleted');
+      navigate('/campaigns');
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   if (!valid) return <InvalidCampaign />;
@@ -75,6 +102,23 @@ export default function CampaignDetailPage() {
           </p>
           {c.objective && <p className="mt-2 max-w-2xl text-sm">{c.objective}</p>}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {c.status === 'active' ? (
+            <Button variant="outline" onClick={() => setStatus.mutate('paused')} disabled={setStatus.isPending}>
+              <Pause /> Pause
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => setStatus.mutate('active')} disabled={setStatus.isPending}>
+              <Play /> Activate
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Pencil /> Edit
+          </Button>
+          <Button variant="ghost" className="text-destructive" onClick={() => setDeleteOpen(true)}>
+            <Trash2 /> Delete
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="results">
@@ -97,6 +141,18 @@ export default function CampaignDetailPage() {
           <SuggestionsTab campaignId={campaignId} />
         </TabsContent>
       </Tabs>
+
+      <CampaignDialog open={editOpen} onOpenChange={setEditOpen} campaign={campaign.data} />
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete campaign?"
+        description={`"${campaign.data.name}" and its results, content, tasks and suggestions will be removed permanently.`}
+        confirmLabel="Delete"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
     </div>
   );
 }

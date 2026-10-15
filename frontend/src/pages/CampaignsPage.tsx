@@ -1,18 +1,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Megaphone, Plus, Search } from 'lucide-react';
+import { Megaphone, Pause, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CampaignFormFields, campaignPayload, useCampaignForm } from '@/components/CampaignForm';
+import { CampaignDialog } from '@/components/CampaignDialog';
 import { PageHeader } from '@/components/PageHeader';
 import api from '@/lib/api';
 import { fetchList, qk } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import { formatCurrency, formatDate } from '@/lib/format';
-import type { Campaign } from '@/lib/types';
-import { Alert } from '@/ui/alert';
+import type { Campaign, CampaignStatus } from '@/lib/types';
 import { Button } from '@/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/ui/dialog';
+import { ConfirmDialog } from '@/ui/confirm-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/ui/dropdown-menu';
 import { EmptyState } from '@/ui/empty-state';
 import { Input } from '@/ui/input';
 import { Pagination } from '@/ui/pagination';
@@ -30,6 +30,8 @@ export default function CampaignsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState<string>('all');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Campaign | null>(null);
+  const [deleting, setDeleting] = useState<Campaign | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -53,16 +55,29 @@ export default function CampaignsPage() {
     placeholderData: keepPreviousData,
   });
 
-  const create = useMutation({
-    mutationFn: async (values: ReturnType<typeof campaignPayload>) =>
-      (await api.post<Campaign>('/campaigns/', values)).data,
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: ['campaigns'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      toast.success(`Campaign "${created.name}" created`);
-      setCreateOpen(false);
-      create.reset();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['campaigns'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+  };
+
+  const setStatusMutation = useMutation({
+    mutationFn: async ({ campaign, next }: { campaign: Campaign; next: CampaignStatus }) =>
+      (await api.patch(`/campaigns/${campaign.id}/`, { status: next })).data,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      toast.success(`"${vars.campaign.name}" marked ${vars.next}`);
     },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (campaign: Campaign) => api.delete(`/campaigns/${campaign.id}/`),
+    onSuccess: (_data, campaign) => {
+      setDeleting(null);
+      invalidate();
+      toast.success(`"${campaign.name}" deleted`);
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   const rows = list.data?.results ?? [];
@@ -159,6 +174,7 @@ export default function CampaignsPage() {
                 <TableHead className="text-right">Budget</TableHead>
                 <TableHead className="hidden md:table-cell">UTM campaign</TableHead>
                 <TableHead className="hidden lg:table-cell">Starts</TableHead>
+                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -178,6 +194,33 @@ export default function CampaignsPage() {
                     {c.utm_campaign || '—'}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground lg:table-cell">{formatDate(c.start_date)}</TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label="Campaign actions">
+                          ⋯
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setEditing(c)}>
+                          <Pencil /> Edit
+                        </DropdownMenuItem>
+                        {c.status === 'active' ? (
+                          <DropdownMenuItem onSelect={() => setStatusMutation.mutate({ campaign: c, next: 'paused' })}>
+                            <Pause /> Pause
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => setStatusMutation.mutate({ campaign: c, next: 'active' })}>
+                            <Play /> Activate
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(c)}>
+                          <Trash2 /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -186,62 +229,26 @@ export default function CampaignsPage() {
         </>
       )}
 
-      <CreateCampaignDialog
-        open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open) create.reset();
-        }}
-        pending={create.isPending}
-        error={create.isError ? getErrorMessage(create.error) : undefined}
-        onSubmit={(values) => create.mutate(campaignPayload(values))}
+      <CampaignDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CampaignDialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+        campaign={editing}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete campaign?"
+        description={
+          deleting
+            ? `"${deleting.name}" and its results, content, tasks and suggestions will be removed permanently.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => deleting && remove.mutate(deleting)}
       />
     </div>
-  );
-}
-
-function CreateCampaignDialog({
-  open,
-  onOpenChange,
-  pending,
-  error,
-  onSubmit,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  pending: boolean;
-  error?: string;
-  onSubmit: (values: Parameters<typeof campaignPayload>[0]) => void;
-}) {
-  const form = useCampaignForm();
-  const handleSubmit = form.handleSubmit((values) => onSubmit(values));
-  useEffect(() => {
-    if (open) form.reset();
-  }, [open, form]);
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>New campaign</DialogTitle>
-          <DialogDescription>Only the name is required — you can fill in the rest now or later.</DialogDescription>
-        </DialogHeader>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            {error}
-          </Alert>
-        )}
-        <form onSubmit={handleSubmit} noValidate id="create-campaign-form">
-          <CampaignFormFields form={form} idPrefix="create-" />
-        </form>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="submit" form="create-campaign-form" disabled={pending}>
-            {pending ? 'Creating…' : 'Create campaign'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
