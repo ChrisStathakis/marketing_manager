@@ -9,13 +9,22 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
+// Single-flight refresh: concurrent 401s share one /token/refresh/ call.
+let refreshing: Promise<boolean> | null = null;
+
 api.interceptors.response.use(
   (r) => r,
   async (err) => {
-    const orig = err.config as (typeof err.config & { _retry?: boolean });
-    if (err.response?.status === 401 && !orig._retry) {
+    const orig = err.config as typeof err.config & { _retry?: boolean };
+    if (err.response?.status === 401 && orig && !orig._retry) {
       orig._retry = true;
-      const ok = await useAuthStore.getState().refresh();
+      refreshing ??= useAuthStore
+        .getState()
+        .refresh()
+        .finally(() => {
+          refreshing = null;
+        });
+      const ok = await refreshing;
       if (ok) {
         orig.headers.Authorization = `Bearer ${useAuthStore.getState().access}`;
         return api(orig);

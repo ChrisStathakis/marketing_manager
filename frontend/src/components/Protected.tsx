@@ -1,13 +1,9 @@
-import { Navigate, Outlet } from 'react-router-dom';
-import Layout from './Layout';
-import { useAuthStore } from '../lib/auth-store';
+import { Navigate } from 'react-router-dom';
+import AppShell from './AppShell';
+import { useAuthStore } from '@/lib/auth-store';
 
 export default function Protected() {
   const access = useAuthStore((s) => s.access);
   if (!access) return <Navigate to="/login" replace />;
-  return (
-    <Layout>
-      <Outlet />
-    </Layout>
-  );
+  return <AppShell />;
 }
