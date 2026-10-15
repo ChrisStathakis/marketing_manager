@@ -16,8 +16,8 @@ export async function fetchList<T>(url: string, params?: ListParams): Promise<Pa
 }
 
 /** GET a single object. */
-export async function fetchOne<T>(url: string): Promise<T> {
-  const { data } = await api.get<T>(url);
+export async function fetchOne<T>(url: string, params?: ListParams): Promise<T> {
+  const { data } = await api.get<T>(url, { params });
   return data;
 }
 

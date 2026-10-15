@@ -101,11 +101,28 @@ export interface CampaignSummary {
   roas: number;
 }
 
+export interface DashboardPoint {
+  date: string;
+  revenue: number;
+  spend: number;
+  orders: number;
+}
+
+export interface DashboardDeltas {
+  spend: number | null;
+  revenue: number | null;
+  orders: number | null;
+  roas: number | null;
+}
+
 export interface DashboardSummary {
   spend: number;
   revenue: number;
   orders: number;
   roas: number;
+  series: DashboardPoint[];
+  deltas: DashboardDeltas;
+  range: { start: string | null; end: string | null };
   campaigns: CampaignSummary[];
 }
 
