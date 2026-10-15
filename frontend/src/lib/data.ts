@@ -21,6 +21,19 @@ export async function fetchOne<T>(url: string): Promise<T> {
   return data;
 }
 
+/** Download a CSV endpoint as a file, with the current filters and auth. */
+export async function downloadCsv(url: string, params: ListParams | undefined, filename: string) {
+  const res = await api.get<Blob>(url, { params, responseType: 'blob' });
+  const blobUrl = URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
 /** Shared react-query key factory. */
 export const qk = {
   config: ['config'] as const,

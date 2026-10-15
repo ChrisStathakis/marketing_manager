@@ -1,13 +1,13 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle2, Circle, FileText, Lightbulb, ListTodo, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, Download, FileText, Lightbulb, ListTodo, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ContentItemDialog } from '@/components/ContentItemDialog';
 import { SuggestionCard } from '@/components/SuggestionCard';
 import api from '@/lib/api';
-import { fetchList, fetchOne, qk } from '@/lib/data';
+import { fetchList, fetchOne, qk, downloadCsv } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, formatRoas, toDateInputValue } from '@/lib/format';
 import type { Campaign, ContentItem, DailyMetric, Suggestion, Task } from '@/lib/types';
@@ -227,9 +227,22 @@ function ResultsTab({ campaignId }: { campaignId: number }) {
         <p className="text-sm text-muted-foreground">
           Daily metrics for this campaign{list.data ? ` (${list.data.count} rows)` : ''}.
         </p>
-        <Link to="/results" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          Import CSV
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              downloadCsv('/metrics/export-csv/', { campaign: campaignId }, 'campaign-metrics.csv').catch((e) =>
+                toast.error(getErrorMessage(e, 'Export failed.')),
+              )
+            }
+          >
+            <Download /> Export CSV
+          </Button>
+          <Link to="/results" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Import CSV
+          </Link>
+        </div>
       </div>
       {list.isLoading ? (
         <Skeleton className="h-40" />

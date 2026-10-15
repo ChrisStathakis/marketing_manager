@@ -56,3 +56,26 @@ class AdSpendImportCsvTests(APITestCase):
         self.assertEqual(r.data["created"], 1)
         self.assertEqual(r.data["error_count"], 2)
         self.assertEqual([e["row"] for e in r.data["errors"]], [3, 4])
+
+
+class AdSpendExportTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="exporter", password="pw123456")
+        self.client.force_authenticate(self.user)
+        self.campaign = Campaign.objects.create(name="Fall Baskets", budget="500.00")
+        self.channel = Channel.objects.create(name="Main IG", channel_type="instagram")
+        AdSpend.objects.create(campaign=self.campaign, channel=self.channel, date="2026-10-01", spend="30.00")
+        AdSpend.objects.create(campaign=self.campaign, date="2026-10-02", spend="12.00")
+
+    def test_export_includes_null_channel_as_empty(self):
+        r = self.client.get("/api/spend/export-csv/")
+        self.assertEqual(r.status_code, 200)
+        lines = r.content.decode().strip().splitlines()
+        self.assertEqual(lines[0], "campaign,channel,date,spend,impressions,clicks,conversions")
+        self.assertEqual(len(lines), 3)
+        self.assertIn(f"{self.campaign.id},,2026-10-02", lines[2])
+
+    def test_filter_by_channel(self):
+        r = self.client.get("/api/spend/", {"channel": self.channel.id})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data["count"], 1)

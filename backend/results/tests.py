@@ -60,3 +60,47 @@ class MetricImportCsvTests(APITestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.data["created"], 1)
         self.assertEqual(r.data["error_count"], 0)
+
+
+class MetricFilterExportTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="exporter", password="pw123456")
+        self.client.force_authenticate(self.user)
+        self.campaign = Campaign.objects.create(name="Fall Baskets", budget="500.00")
+        self.other = Campaign.objects.create(name="Winter", budget="200.00")
+        DailyMetric.objects.create(
+            campaign=self.campaign, date="2026-10-01", revenue="10.00", orders=1, spend="5.00", ctr=0.5, roas=2.0
+        )
+        DailyMetric.objects.create(
+            campaign=self.campaign, date="2026-09-01", revenue="20.00", orders=2, spend="10.00", ctr=0.4, roas=2.0
+        )
+        DailyMetric.objects.create(
+            campaign=self.other, date="2026-10-02", revenue="30.00", orders=3, spend="15.00", ctr=0.3, roas=2.0
+        )
+
+    def test_filter_by_date_range(self):
+        r = self.client.get("/api/metrics/", {"date__gte": "2026-10-01", "date__lte": "2026-10-31"})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data["count"], 2)
+
+    def test_export_respects_filters(self):
+        r = self.client.get(
+            "/api/metrics/export-csv/",
+            {"campaign": self.campaign.id, "date__gte": "2026-10-01"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/csv", r["Content-Type"])
+        lines = r.content.decode().strip().splitlines()
+        self.assertEqual(lines[0], "campaign,date,revenue,orders,spend,ctr,roas")
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[1].startswith(f"{self.campaign.id},2026-10-01"))
+
+    def test_export_round_trips_through_import(self):
+        exported = self.client.get("/api/metrics/export-csv/")
+        body = exported.content.decode()
+        f = SimpleUploadedFile("roundtrip.csv", body.encode("utf-8"), content_type="text/csv")
+        r = self.client.post("/api/metrics/import-csv/", {"file": f}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data["created"], 0)
+        self.assertEqual(r.data["updated"], 3)
+        self.assertEqual(r.data["error_count"], 0)
