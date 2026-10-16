@@ -203,7 +203,7 @@ function ContentTab({ campaignId }: { campaignId: number }) {
         <>
           <ul className="grid gap-2">
             {rows.map((item) => (
-              <li key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
+              <li key={item.id} className="flex items-center gap-3 rounded-field border border-border bg-card px-4 py-2.5">
                 <FileText className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{item.title}</p>
@@ -397,7 +397,7 @@ function TasksTab({ campaignId }: { campaignId: number }) {
   return (
     <div>
       <form
-        className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3"
+        className="mb-4 flex flex-wrap items-end gap-2 rounded-card border border-border bg-card p-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (title.trim()) create.mutate();
@@ -429,7 +429,7 @@ function TasksTab({ campaignId }: { campaignId: number }) {
         <EmptyState icon={ListTodo} title="No tasks yet" description="Add follow-ups here to keep the campaign moving." />
       ) : (
         <>
-          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+          <ul className="divide-y divide-border overflow-hidden rounded-card border border-border bg-card">
             {rows.map((t) => {
               const overdue = !t.done && t.due_date && t.due_date < TODAY;
               return (
@@ -518,13 +518,27 @@ function SuggestionsTab({ campaignId }: { campaignId: number }) {
         <Button variant="outline" onClick={() => generate.mutate('ai')} disabled={generate.isPending}>
           <Sparkles /> Generate AI
         </Button>
-        <p className="text-xs text-muted-foreground">AI needs OPENAI_API_KEY configured on the backend.</p>
+        <p className="text-xs text-muted-foreground">
+          AI needs an OpenAI key — add one in{' '}
+          <Link to="/settings" className="font-medium text-primary hover:underline">
+            Settings → API keys
+          </Link>
+          .
+        </p>
       </div>
       {generate.isError && (
         <Alert variant={aiNeedsKey ? 'info' : 'destructive'} className="mb-4">
-          {aiNeedsKey
-            ? 'AI suggestions are not configured. Set OPENAI_API_KEY in backend/.env and restart Django — rule suggestions work without it.'
-            : getErrorMessage(generate.error)}
+          {aiNeedsKey ? (
+            <>
+              AI suggestions are not configured. Add an OpenAI key in{' '}
+              <Link to="/settings" className="font-medium text-primary underline-offset-2 hover:underline">
+                Settings → API keys
+              </Link>{' '}
+              (or set OPENAI_API_KEY in backend/.env) — rule suggestions work without it.
+            </>
+          ) : (
+            getErrorMessage(generate.error)
+          )}
         </Alert>
       )}
 

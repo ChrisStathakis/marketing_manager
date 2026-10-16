@@ -9,6 +9,7 @@ from channels.views import ChannelViewSet
 from config.dashboard import health, public_config, summary
 from config.registration import RegisterView
 from content.views import ContentItemViewSet
+from integrations.views import integration_detail, integration_list
 from plans.views import TaskViewSet
 from results.views import DailyMetricViewSet
 from shop.views import OrderRefViewSet, ProductViewSet
@@ -31,7 +32,13 @@ urlpatterns = [
     path("api/dashboard/summary/", summary),
     path("api/health/", health),
     path("api/config/", public_config),
+    path("api/integrations/", integration_list),
+    path("api/integrations/<slug:provider>/", integration_detail),
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),
 ]
+
+# Django admin branding.
+admin.site.site_header = "Social Media Manager"
+admin.site.site_title = "Social Media Manager"

@@ -48,4 +48,5 @@ export const qk = {
   suggestions: (params?: ListParams) => ['suggestions', params] as const,
   orders: (params?: ListParams) => ['orders', params] as const,
   products: (params?: ListParams) => ['products', params] as const,
+  integrations: ['integrations'] as const,
 };

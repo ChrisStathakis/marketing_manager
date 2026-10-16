@@ -170,7 +170,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Desktop month grid */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-xs md:block">
+      <div className="hidden overflow-hidden rounded-card border border-border bg-card shadow-soft md:block">
         <div className="grid grid-cols-7 border-b border-border bg-muted/60">
           {WEEKDAYS.map((d) => (
             <div key={d} className="px-2 py-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -254,7 +254,7 @@ export default function CalendarPage() {
           <p className="text-sm text-muted-foreground">Nothing planned this month yet.</p>
         ) : (
           agenda.map(([key, items]) => (
-            <div key={key} className="rounded-xl border border-border bg-card p-3">
+            <div key={key} className="rounded-card border border-border bg-card p-3">
               <p className={cn('mb-2 text-sm font-medium', key === TODAY_KEY && 'text-primary')}>
                 {formatDate(key)}
                 {key === TODAY_KEY && ' · Today'}
@@ -446,7 +446,7 @@ function DayDialog({
             ) : (
               <ul className="space-y-2">
                 {items.tasks.map((task) => (
-                  <li key={`t${task.id}`} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                  <li key={`t${task.id}`} className="flex items-center gap-2 rounded-field border border-border px-3 py-2">
                     <button
                       className="text-muted-foreground transition-colors hover:text-primary"
                       aria-label={task.done ? 'Mark as not done' : 'Mark as done'}
@@ -469,7 +469,7 @@ function DayDialog({
                   </li>
                 ))}
                 {items.content.map((item) => (
-                  <li key={`c${item.id}`} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                  <li key={`c${item.id}`} className="flex items-center gap-2 rounded-field border border-border px-3 py-2">
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
                     <span className="flex-1 truncate text-sm">{item.title}</span>
                     <ContentStatusBadge status={item.status} />

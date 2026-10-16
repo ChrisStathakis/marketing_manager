@@ -143,7 +143,7 @@ function ImportCard({
             void upload(e.dataTransfer.files?.[0]);
           }}
           className={
-            'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ' +
+            'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed px-4 py-8 text-center transition-colors ' +
             (dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/50')
           }
         >

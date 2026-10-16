@@ -1,6 +1,5 @@
 """Rule-based + LLM-backed suggestion generation (ORM only)."""
 import json
-import os
 import urllib.request
 from datetime import timedelta
 
@@ -10,6 +9,7 @@ from django.utils import timezone
 from ads.models import AdSpend
 from campaigns.models import Campaign
 from content.models import ContentItem
+from integrations.services import get_credential_value
 from results.models import DailyMetric
 
 
@@ -58,9 +58,11 @@ def rule_suggestions(campaign: Campaign) -> list[dict]:
 
 def llm_suggestions(campaign: Campaign, api_key: str | None = None, model: str = "gpt-4o-mini") -> dict:
     """Call OpenAI chat completions server-side. Raises RuntimeError if no key."""
-    key = api_key or os.environ.get("OPENAI_API_KEY")
+    key = api_key or get_credential_value("openai")
     if not key:
-        raise RuntimeError("OPENAI_API_KEY not set.")
+        raise RuntimeError(
+            "No OpenAI key configured (Settings → API keys, or OPENAI_API_KEY in backend/.env)."
+        )
     snap = campaign_snapshot(campaign)
     rules = rule_suggestions(campaign)
     prompt = (

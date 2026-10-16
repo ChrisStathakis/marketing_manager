@@ -36,10 +36,19 @@ Range filters power the calendar (`content?publish_at__gte=…&publish_at__lte=�
 ## Suggestions
 
 - `POST /api/suggestions/generate/` body `{"campaign": id}` → rule suggestions. Re-running refreshes open suggestions with the same title instead of stacking duplicates.
-- `POST /api/suggestions/generate-ai/` body `{"campaign": id, "api_key?": "..."}` → 501 without key, else stored/refreshed as kind=ai.
+- `POST /api/suggestions/generate-ai/` body `{"campaign": id, "api_key?": "..."}` → 501 without a key, else stored/refreshed as kind=ai. Key resolution: request `api_key` → key saved in Settings → `OPENAI_API_KEY` env (see [api-keys.md](api-keys.md)).
 - `POST /api/suggestions/{id}/accept/` body `{"title?", "due_date?"}` → marks accepted and creates a linked task (idempotent: returns the existing task with `created: false` on repeat).
 - `POST /api/suggestions/{id}/reopen/` → moves it back to the open list; any created task is kept.
 - The serializer includes the linked `task {id, title, done, due_date}` or `null`.
+
+## Integrations
+
+Third-party API keys (see [api-keys.md](api-keys.md)). Values are write-only: stored encrypted, never returned.
+
+- `GET /api/integrations/` — any authenticated user. Registry entries (label, summary, description, `env_var`, `used_by`, `where_to_get`, `steps`, `security_note`) plus status: `configured`, `source` (`database` | `env` | `null`), `key_hint`, `stored`, `stored_unreadable`, `updated_at`, `updated_by`.
+- `PUT /api/integrations/{provider}/` body `{"key": "..."}` — staff only; saves/replaces the key (min 16 chars). Response is the same status object, never the value.
+- `DELETE /api/integrations/{provider}/` — staff only; removes the stored key, so the `env_var` fallback (if set) becomes active again.
+- Unknown provider slugs → 404.
 
 ## Dashboard
 

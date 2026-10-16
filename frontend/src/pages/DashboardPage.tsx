@@ -102,11 +102,11 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="enter-stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Spend" value={formatCurrency(data.spend)} icon={Megaphone} delta={data.deltas.spend} />
         <StatCard label="Revenue" value={formatCurrency(data.revenue)} icon={Euro} delta={data.deltas.revenue} />
         <StatCard label="Orders" value={formatNumber(data.orders)} icon={ShoppingCart} delta={data.deltas.orders} />
-        <StatCard label="ROAS" value={formatRoas(data.roas)} icon={Percent} delta={data.deltas.roas} hint="Revenue ÷ spend" />
+        <StatCard label="ROAS" value={formatRoas(data.roas)} icon={Percent} delta={data.deltas.roas} hint="Revenue ÷ spend" featured />
       </div>
 
       <Card className="mt-4">

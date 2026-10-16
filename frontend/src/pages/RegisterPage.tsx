@@ -1,17 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { ShoppingBasket } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { AuthLayout } from '@/components/AuthLayout';
 import { useAuthStore } from '@/lib/auth-store';
 import { fetchOne, qk } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import type { AppConfig } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import { Alert } from '@/ui/alert';
-import { Button } from '@/ui/button';
+import { Button, buttonVariants } from '@/ui/button';
 import { Field } from '@/ui/field';
 import { Input } from '@/ui/input';
 import { Skeleton } from '@/ui/skeleton';
@@ -54,58 +55,54 @@ export default function RegisterPage() {
   });
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-muted/40 p-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <ShoppingBasket className="size-4.5" aria-hidden />
-        </span>
-        <span className="text-lg font-semibold tracking-tight">Basket Campaigns</span>
-      </div>
+    <AuthLayout>
       {config.isLoading ? (
-        <div className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-9 w-full" />
-          <Skeleton className="h-9 w-full" />
-          <Skeleton className="h-9 w-full" />
+        <div className="space-y-4">
+          <Skeleton className="h-7 w-44" />
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="mt-6 h-9.5 w-full" />
+          <Skeleton className="h-9.5 w-full" />
+          <Skeleton className="h-9.5 w-full" />
         </div>
       ) : config.data && !config.data.registration_enabled ? (
-        <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
-          <h1 className="text-xl font-semibold tracking-tight">Registration is disabled</h1>
-          <p className="text-sm text-muted-foreground">
+        <div className="text-center">
+          <h1 className="text-[clamp(1.6rem,2.5vw,2rem)] leading-tight font-semibold tracking-[-0.035em]">
+            Registration is disabled
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             This instance is set up for a single admin. Ask the owner to create your account, or sign in instead.
           </p>
-          <Link to="/login" className="text-sm font-medium text-primary hover:underline">
+          <Link to="/login" className={cn(buttonVariants({ variant: 'secondary' }), 'mt-6')}>
             Back to sign in
           </Link>
         </div>
       ) : (
-        <form
-          onSubmit={onSubmit}
-          noValidate
-          className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm"
-        >
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Create account</h1>
-            <p className="mt-1 text-sm text-muted-foreground">A few seconds and you're in.</p>
-          </div>
-          {errors.root && <Alert variant="destructive">{errors.root.message}</Alert>}
-          <Field label="Username" htmlFor="username" error={errors.username?.message}>
-            <Input id="username" autoComplete="username" autoFocus {...register('username')} />
-          </Field>
-          <Field label="Password" htmlFor="password" error={errors.password?.message} hint="At least 8 characters.">
-            <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
-          </Field>
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating account…' : 'Create account'}
-          </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Have an account?{' '}
-            <Link to="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </form>
+        <>
+          <span className="eyebrow">Welcome to your workspace</span>
+          <h1 className="mt-3 mb-2 text-[clamp(1.6rem,2.5vw,2rem)] leading-tight font-semibold tracking-[-0.035em]">
+            Create your account.
+          </h1>
+          <p className="mb-6 text-sm text-muted-foreground">A few seconds and you're in.</p>
+          <form onSubmit={onSubmit} noValidate className="space-y-4">
+            {errors.root && <Alert variant="destructive">{errors.root.message}</Alert>}
+            <Field label="Username" htmlFor="username" error={errors.username?.message}>
+              <Input id="username" autoComplete="username" autoFocus {...register('username')} />
+            </Field>
+            <Field label="Password" htmlFor="password" error={errors.password?.message} hint="At least 8 characters.">
+              <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
+            </Field>
+            <Button type="submit" className="mt-2 w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating account…' : 'Create account'}
+            </Button>
+            <p className="pt-1 text-center text-sm text-muted-foreground">
+              Have an account?{' '}
+              <Link to="/login" className="font-semibold text-primary hover:underline">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        </>
       )}
-    </div>
+    </AuthLayout>
   );
 }

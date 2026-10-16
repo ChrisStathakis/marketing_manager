@@ -22,7 +22,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="flex min-h-dvh items-center justify-center p-6">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
+          <div className="w-full max-w-md rounded-card border border-border bg-card p-6 text-center shadow-soft">
             <AlertTriangle className="mx-auto mb-3 size-8 text-warning" aria-hidden />
             <h1 className="text-lg font-semibold">Something went wrong</h1>
             <p className="mt-1 mb-4 text-sm break-words text-muted-foreground">{this.state.error.message}</p>

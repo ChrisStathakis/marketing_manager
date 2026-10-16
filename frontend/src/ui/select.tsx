@@ -10,8 +10,9 @@ export function SelectTrigger({ className, children, ...props }: React.Component
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground shadow-xs transition-colors',
-        'data-[placeholder]:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+        'flex h-9.5 w-full items-center justify-between gap-2 rounded-field border-[1.5px] border-input bg-card px-3.5 py-2 text-sm text-foreground shadow-xs transition-[color,background-color,border-color,box-shadow] duration-150',
+        'hover:border-moss/60 data-[placeholder]:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+        'focus-visible:border-moss focus-visible:ring-4 focus-visible:ring-ring/20 focus-visible:outline-none',
         className,
       )}
       {...props}
@@ -35,7 +36,7 @@ export function SelectContent({
       <SelectPrimitive.Content
         position={position}
         className={cn(
-          'relative z-50 max-h-80 min-w-32 overflow-hidden rounded-lg border border-border bg-card text-foreground shadow-lg data-[state=open]:animate-[overlay-show_150ms_ease-out]',
+          'relative z-50 max-h-80 min-w-32 overflow-hidden rounded-field border border-border bg-card text-foreground shadow-lift data-[state=open]:animate-pop',
           position === 'popper' && 'w-(--radix-select-trigger-width)',
           className,
         )}
@@ -51,8 +52,8 @@ export function SelectItem({ className, children, ...props }: React.ComponentPro
   return (
     <SelectPrimitive.Item
       className={cn(
-        'relative flex cursor-default select-none items-center rounded-md py-1.5 pr-8 pl-2.5 text-sm outline-none',
-        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-highlighted:bg-muted',
+        'relative flex cursor-default select-none items-center rounded-[9px] py-1.5 pr-8 pl-2.5 text-sm font-medium outline-none',
+        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-highlighted:bg-sage',
         className,
       )}
       {...props}

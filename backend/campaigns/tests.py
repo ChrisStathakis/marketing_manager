@@ -1,12 +1,22 @@
 from datetime import timedelta
+from io import StringIO
 
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db.models import Sum
 from django.test import override_settings
 from django.utils import timezone
 
+from ads.models import AdSpend
 from campaigns.models import Campaign
+from content.models import ContentItem
+from integrations.models import IntegrationCredential
+from plans.models import Task
 from results.models import DailyMetric
+from shop.models import OrderRef, Product
+from suggestions.models import Suggestion
 
 
 class RegisterTests(APITestCase):
@@ -115,3 +125,49 @@ class DashboardRangeTests(APITestCase):
         end = timezone.localdate()
         self.assertEqual(data["range"]["end"], end.isoformat())
         self.assertEqual(data["range"]["start"], (end - timedelta(days=2)).isoformat())
+
+
+class SeedDemoCommandTests(APITestCase):
+    def test_seed_demo_populates_and_guards_against_rerun(self):
+        get_user_model().objects.create_user(username="seedowner", password="pw123456")
+        call_command("seed_demo", stdout=StringIO())
+        self.assertGreater(Campaign.objects.count(), 0)
+        self.assertGreater(DailyMetric.objects.count(), 0)
+        self.assertGreater(AdSpend.objects.count(), 0)
+        self.assertGreater(ContentItem.objects.count(), 0)
+        self.assertGreater(Product.objects.count(), 0)
+        self.assertGreater(OrderRef.objects.count(), 0)
+        self.assertGreater(Task.objects.count(), 0)
+        self.assertGreater(Suggestion.objects.count(), 0)
+        self.assertTrue(Campaign.objects.filter(owner__username="seedowner").exists())
+
+        # Metrics and ad spend stay consistent for the same campaign/day.
+        metric = DailyMetric.objects.filter(campaign__utm_campaign="spring-retargeting").order_by("-date").first()
+        spend_sum = metric.campaign.ad_spends.filter(date=metric.date).aggregate(total=Sum("spend"))["total"]
+        self.assertEqual(metric.spend, spend_sum)
+
+        # Second run without --reset is guarded.
+        with self.assertRaises(CommandError):
+            call_command("seed_demo", stdout=StringIO())
+
+    def test_seed_demo_reset_keeps_users_and_saved_api_keys(self):
+        user = get_user_model().objects.create_user(username="seedowner", password="pw123456")
+        IntegrationCredential.objects.create(provider="openai", key_encrypted="token", key_hint="0000")
+        call_command("seed_demo", stdout=StringIO())
+        call_command("seed_demo", "--reset", stdout=StringIO())
+        self.assertTrue(get_user_model().objects.filter(pk=user.pk).exists())
+        self.assertTrue(IntegrationCredential.objects.filter(provider="openai").exists())
+        self.assertGreater(Campaign.objects.count(), 0)
+
+    def test_seed_demo_owner_option_selects_user(self):
+        get_user_model().objects.create_user(username="first", password="pw123456")
+        target = get_user_model().objects.create_user(username="second", password="pw123456")
+        call_command("seed_demo", "--owner", "second", stdout=StringIO())
+        self.assertTrue(Campaign.objects.filter(owner=target).exists())
+        self.assertFalse(Campaign.objects.filter(owner__username="first").exists())
+
+    def test_seed_demo_unknown_owner_fails_before_writing(self):
+        get_user_model().objects.create_user(username="someone", password="pw123456")
+        with self.assertRaises(CommandError):
+            call_command("seed_demo", "--owner", "ghost", stdout=StringIO())
+        self.assertEqual(Campaign.objects.count(), 0)

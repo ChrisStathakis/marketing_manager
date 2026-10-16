@@ -150,6 +150,25 @@ export interface AppConfig {
   registration_enabled: boolean;
 }
 
+export interface Integration {
+  id: string;
+  label: string;
+  summary: string;
+  description: string;
+  env_var: string;
+  used_by: string[];
+  where_to_get: string;
+  steps: string[];
+  security_note: string;
+  configured: boolean;
+  source: 'database' | 'env' | null;
+  key_hint: string | null;
+  stored: boolean;
+  stored_unreadable: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
 export interface Paginated<T> {
   count: number;
   next: string | null;

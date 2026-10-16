@@ -1,4 +1,4 @@
-"""Django settings for basket-campaign-manager."""
+"""Django settings for social-media-manager."""
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "results",
     "plans",
     "suggestions",
+    "integrations",
     "shop",
 ]
 

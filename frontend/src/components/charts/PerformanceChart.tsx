@@ -27,19 +27,21 @@ export default function PerformanceChart({ data }: { data: DashboardPoint[] }) {
           tickFormatter={(v: number) => formatCurrency(v)}
         />
         <Tooltip
-          cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
+          cursor={{ fill: 'var(--muted)', opacity: 0.6 }}
           labelFormatter={(label) => formatTick(String(label))}
           formatter={(value, name) => [formatCurrency(Number(value)), name === 'revenue' ? 'Revenue' : 'Spend']}
           contentStyle={{
             background: 'var(--card)',
             border: '1px solid var(--border)',
-            borderRadius: 12,
+            borderRadius: 14,
+            boxShadow: 'var(--shadow-lift)',
             color: 'var(--card-foreground)',
             fontSize: 13,
+            fontWeight: 500,
           }}
         />
-        <Bar dataKey="revenue" fill="var(--primary)" radius={[6, 6, 0, 0]} maxBarSize={28} />
-        <Bar dataKey="spend" fill="var(--muted-foreground)" radius={[6, 6, 0, 0]} maxBarSize={28} />
+        <Bar dataKey="revenue" fill="var(--chart-1)" radius={[6, 6, 0, 0]} maxBarSize={28} />
+        <Bar dataKey="spend" fill="var(--chart-2)" radius={[6, 6, 0, 0]} maxBarSize={28} />
       </BarChart>
     </ResponsiveContainer>
   );

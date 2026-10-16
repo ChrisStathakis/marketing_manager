@@ -2,7 +2,15 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('animate-pulse rounded-md bg-muted', className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        'animate-pulse rounded-field bg-[linear-gradient(90deg,var(--muted)_0%,var(--surface-alt)_50%,var(--muted)_100%)]',
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function Spinner({ className, label }: { className?: string; label?: string }) {

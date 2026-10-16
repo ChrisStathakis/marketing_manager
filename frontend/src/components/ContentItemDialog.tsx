@@ -236,7 +236,7 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
             </Field>
           </div>
           {preview && (
-            <div className="rounded-lg border border-border bg-muted/50 p-3">
+            <div className="rounded-field border border-border bg-muted/50 p-3">
               <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Link2 className="size-3.5" /> Tagged link preview
               </p>

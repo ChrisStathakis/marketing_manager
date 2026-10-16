@@ -1,6 +1,7 @@
 import { Check, Copy, Link2, Palette, Store } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ApiKeysCard } from '@/components/ApiKeysCard';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuthStore } from '@/lib/auth-store';
 import { useTheme, type Theme } from '@/lib/theme';
@@ -14,12 +15,15 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader title="Settings" description="Utilities and preferences." />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <UtmBuilder />
-        <div className="grid gap-4">
-          <Appearance />
-          <ShopIntegration />
-          <Account />
+      <div className="space-y-4">
+        <ApiKeysCard />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <UtmBuilder />
+          <div className="grid gap-4">
+            <Appearance />
+            <ShopIntegration />
+            <Account />
+          </div>
         </div>
       </div>
     </div>
@@ -79,7 +83,7 @@ function UtmBuilder() {
           {field('campaign', 'Campaign')}
           {field('content', 'Content (optional)')}
         </div>
-        <div className="rounded-lg border border-border bg-muted/50 p-3">
+        <div className="rounded-field border border-border bg-muted/50 p-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Tagged link</p>
           <div className="flex items-start gap-2">
             <code className="min-w-0 flex-1 font-mono text-xs break-all">{built}</code>

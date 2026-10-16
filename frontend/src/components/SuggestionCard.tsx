@@ -59,7 +59,7 @@ export function SuggestionCard({ suggestion, campaignName, linkCampaign = true }
   const pending = accept.isPending || dismiss.isPending || reopen.isPending;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="hover-lift rounded-card border border-border bg-card p-4 shadow-soft">
       <div className="flex flex-wrap items-center gap-2">
         <SuggestionKindBadge kind={suggestion.kind} />
         <strong className="text-sm font-semibold">{suggestion.title}</strong>
@@ -109,7 +109,7 @@ export function SuggestionCard({ suggestion, campaignName, linkCampaign = true }
           <summary className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <Sparkles className="size-3" /> Why this suggestion?
           </summary>
-          <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 text-xs">
+          <pre className="mt-2 max-h-56 overflow-auto rounded-field bg-muted p-3 text-xs">
             {JSON.stringify(suggestion.input_snapshot, null, 2)}
           </pre>
         </details>

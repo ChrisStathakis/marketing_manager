@@ -13,11 +13,11 @@ export function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-[overlay-show_150ms_ease-out]" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#0b1710]/55 backdrop-blur-[2px] data-[state=open]:animate-[overlay-show_150ms_ease-out]" />
       <DialogPrimitive.Content
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-xl',
-          'data-[state=open]:animate-[content-show_150ms_ease-out]',
+          'fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-card p-6 shadow-lift',
+          'data-[state=open]:animate-pop',
           className,
         )}
         {...props}
@@ -25,7 +25,7 @@ export function DialogContent({
         {children}
         <DialogPrimitive.Close
           aria-label="Close"
-          className="absolute top-4 right-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute top-4 right-4 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-sage hover:text-foreground"
         >
           <X className="size-4" />
         </DialogPrimitive.Close>
@@ -39,7 +39,7 @@ export function DialogHeader({ className, ...props }: React.ComponentProps<'div'
 }
 
 export function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
-  return <DialogPrimitive.Title className={cn('text-lg font-semibold tracking-tight', className)} {...props} />;
+  return <DialogPrimitive.Title className={cn('text-lg font-bold tracking-tight', className)} {...props} />;
 }
 
 export function DialogDescription({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Description>) {

@@ -54,7 +54,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             result = llm_suggestions(campaign, api_key=request.data.get("api_key"))
         except RuntimeError as exc:
             return Response(
-                {"detail": str(exc), "hint": "Set OPENAI_API_KEY env or pass api_key; rule suggestions still available at /api/suggestions/generate/."},
+                {"detail": str(exc), "hint": "Add a key in Settings → API keys (or set OPENAI_API_KEY in backend/.env); rule suggestions still work at /api/suggestions/generate/."},
                 status=status.HTTP_501_NOT_IMPLEMENTED,
             )
         except Exception as exc:

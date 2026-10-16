@@ -1,10 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBasket } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { AuthLayout } from '@/components/AuthLayout';
 import { useAuthStore } from '@/lib/auth-store';
 import { fetchOne, qk } from '@/lib/data';
 import type { AppConfig } from '@/lib/types';
@@ -46,22 +47,13 @@ export default function LoginPage() {
   });
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-muted/40 p-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <ShoppingBasket className="size-4.5" aria-hidden />
-        </span>
-        <span className="text-lg font-semibold tracking-tight">Basket Campaigns</span>
-      </div>
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Manage campaigns, results and next steps.</p>
-        </div>
+    <AuthLayout>
+      <span className="eyebrow">Welcome to your workspace</span>
+      <h1 className="mt-3 mb-2 text-[clamp(1.6rem,2.5vw,2rem)] leading-tight font-semibold tracking-[-0.035em]">
+        Good to see you.
+      </h1>
+      <p className="mb-6 text-sm text-muted-foreground">Log in to pick up where you left off.</p>
+      <form onSubmit={onSubmit} noValidate className="space-y-4">
         {errors.root && <Alert variant="destructive">{errors.root.message}</Alert>}
         <Field label="Username" htmlFor="username" error={errors.username?.message}>
           <Input id="username" autoComplete="username" autoFocus {...register('username')} />
@@ -69,18 +61,19 @@ export default function LoginPage() {
         <Field label="Password" htmlFor="password" error={errors.password?.message}>
           <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
         </Field>
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" className="mt-2 w-full" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
+          {!isSubmitting && <ArrowRight className="opacity-70" aria-hidden />}
         </Button>
         {config.data?.registration_enabled && (
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="pt-1 text-center text-sm text-muted-foreground">
             No account?{' '}
-            <Link to="/register" className="font-medium text-primary hover:underline">
+            <Link to="/register" className="font-semibold text-primary hover:underline">
               Create one
             </Link>
           </p>
         )}
       </form>
-    </div>
+    </AuthLayout>
   );
 }

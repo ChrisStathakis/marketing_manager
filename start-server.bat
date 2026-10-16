@@ -1,6 +1,6 @@
 @echo off
 setlocal
-REM Basket Campaign Manager - start backend + frontend dev servers
+REM Social Media Manager - start backend + frontend dev servers
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
@@ -24,7 +24,7 @@ if not exist "backend\.env" (
 )
 
 echo [1/2] Starting Django API on http://127.0.0.1:8000 ...
-start "basket-backend" cmd /k ".\.venv\Scripts\python.exe backend\manage.py migrate && .\.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8000"
+start "social-backend" cmd /k ".\.venv\Scripts\python.exe backend\manage.py migrate && .\.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8000"
 
 echo Waiting for the API to report healthy (max 30s) ...
 set /a tries=0
@@ -45,7 +45,7 @@ echo API is healthy.
 :startfrontend
 if exist "frontend\package.json" (
   echo [2/2] Starting Vite frontend on http://127.0.0.1:5173 ...
-  start "basket-frontend" /d "frontend" cmd /k "npm run dev -- --port 5173 --host 127.0.0.1"
+  start "social-frontend" /d "frontend" cmd /k "npm run dev -- --port 5173 --host 127.0.0.1"
 ) else (
   echo [SKIP] frontend\package.json not found, backend only.
 )

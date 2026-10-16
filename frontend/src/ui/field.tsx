@@ -17,7 +17,7 @@ export function Field({ label, htmlFor, error, hint, className, children }: Fiel
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="text-xs font-medium text-destructive">
           {error}
         </p>
       ) : hint ? (

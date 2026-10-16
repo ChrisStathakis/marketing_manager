@@ -1,4 +1,4 @@
-# Backend — Basket Campaign Manager
+# Backend — Social Media Manager
 
 Django + DRF + SimpleJWT. ORM only, no raw SQL.
 
@@ -11,7 +11,7 @@ Django + DRF + SimpleJWT. ORM only, no raw SQL.
 .\.venv\Scripts\python.exe backend\manage.py runserver
 ```
 
-Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions). Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` (parsed by `dj-database-url`, installed via requirements); SQLite is the fallback.
+Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions) — it can also be saved from the app's Settings → API keys (encrypted at rest, DB-first with env fallback; the `cryptography` requirement powers that). Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` (parsed by `dj-database-url`, installed via requirements); SQLite is the fallback.
 
 ## Checks
 
@@ -26,5 +26,5 @@ cd backend
 ..\.venv\Scripts\python.exe manage.py test
 ```
 
-`backend/.env` is read at startup (`DJANGO_*`, `OPENAI_API_KEY`, `JWT_*`).
+`backend/.env` is read at startup (`DJANGO_*`, `OPENAI_API_KEY`, `JWT_*`). Keys saved via Settings → API keys live (encrypted) in the database and take precedence over these env vars — see `docs/api-keys.md`.
 Registration is disabled unless `DJANGO_ALLOW_REGISTRATION=True`.
