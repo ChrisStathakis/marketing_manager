@@ -1,8 +1,10 @@
 from datetime import timedelta
 from io import StringIO
+import json
 
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db.models import Sum
@@ -11,6 +13,7 @@ from django.utils import timezone
 
 from ads.models import AdSpend
 from campaigns.models import Campaign
+from channels.models import Channel
 from content.models import ContentItem
 from integrations.models import IntegrationCredential
 from plans.models import Task
@@ -20,21 +23,34 @@ from suggestions.models import Suggestion
 
 
 class RegisterTests(APITestCase):
-    def test_register_disabled_by_default(self):
+    def test_register_open_until_first_user_then_admin(self):
+        # No accounts yet: registration is open and the first user is the admin.
+        self.assertFalse(get_user_model().objects.exists())
+        r = self.client.post("/api/register/", {"username": "owner", "password": "1"}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertTrue(r.data["is_admin"])
+        owner = get_user_model().objects.get(username="owner")
+        self.assertTrue(owner.is_staff and owner.is_superuser)
+
+    def test_register_closed_once_a_user_exists(self):
+        get_user_model().objects.create_user(username="admin", password="pw123456")
         with override_settings(ALLOW_REGISTRATION=False):
-            r = self.client.post("/api/register/", {"username": "nope", "password": "1234"}, format="json")
+            r = self.client.post("/api/register/", {"username": "nope", "password": "1"}, format="json")
         self.assertEqual(r.status_code, 403, r.content)
 
     @override_settings(ALLOW_REGISTRATION=True)
     def test_register_with_short_password_and_login(self):
+        get_user_model().objects.create_user(username="admin", password="pw123456")
         r = self.client.post("/api/register/", {"username": "newbie", "password": "1234"}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         self.assertIn("access", r.data)
+        self.assertFalse(r.data["is_admin"])
         t = self.client.post("/api/token/", {"username": "newbie", "password": "1234"}, format="json")
         self.assertEqual(t.status_code, 200, t.content)
 
     @override_settings(ALLOW_REGISTRATION=True)
     def test_register_duplicate_username_rejected(self):
+        get_user_model().objects.create_user(username="admin", password="pw123456")
         self.client.post("/api/register/", {"username": "dupe", "password": "1234"}, format="json")
         r = self.client.post("/api/register/", {"username": "dupe", "password": "1234"}, format="json")
         self.assertEqual(r.status_code, 400)
@@ -171,3 +187,85 @@ class SeedDemoCommandTests(APITestCase):
         with self.assertRaises(CommandError):
             call_command("seed_demo", "--owner", "ghost", stdout=StringIO())
         self.assertEqual(Campaign.objects.count(), 0)
+
+
+class BackupTests(APITestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw123456")
+        self.client.force_authenticate(self.admin)
+
+    def _seed(self):
+        channel = Channel.objects.create(name="Instagram", channel_type="instagram", handle="@shop")
+        campaign = Campaign.objects.create(name="Fall", budget="100.00", utm_campaign="fall", owner=self.admin)
+        ContentItem.objects.create(campaign=campaign, channel=channel, title="Post")
+        DailyMetric.objects.create(
+            campaign=campaign, date="2026-10-01", revenue="10.00", orders=1, spend="5.00", ctr=0.1, roas=2.0
+        )
+        AdSpend.objects.create(campaign=campaign, channel=channel, date="2026-10-01", spend="5.00")
+        Product.objects.create(external_id="p1", name="Basket", price="10.00")
+        OrderRef.objects.create(external_id="o1", campaign=campaign, total="10.00")
+        suggestion = Suggestion.objects.create(campaign=campaign, title="Try reels")
+        Task.objects.create(campaign=campaign, title="Do it", suggestion=suggestion)
+
+    def test_export_then_restore_round_trip(self):
+        self._seed()
+        export = self.client.get("/api/backup/export/")
+        self.assertEqual(export.status_code, 200, export.content)
+        payload = json.loads(export.content)
+        self.assertEqual(payload["format"], "marketing-manager-backup")
+        self.assertEqual(payload["counts"]["campaigns.Campaign"], 1)
+        # Owner is exported by username so it survives a restore into a new DB.
+        self.assertEqual(payload["data"]["campaigns.Campaign"][0]["owner"], "admin")
+        self.assertNotIn("auth.User", payload["data"])
+
+        Campaign.objects.all().delete()
+        self.assertEqual(Campaign.objects.count(), 0)
+        self.assertEqual(ContentItem.objects.count(), 0)
+
+        upload = SimpleUploadedFile("backup.json", json.dumps(payload).encode())
+        r = self.client.post("/api/backup/restore/", {"file": upload, "confirm": "replace"}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data["kind"], "json")
+        self.assertEqual(Campaign.objects.count(), 1)
+        self.assertEqual(Campaign.objects.get().owner, self.admin)
+        self.assertEqual(ContentItem.objects.count(), 1)
+        self.assertEqual(DailyMetric.objects.count(), 1)
+        self.assertEqual(Task.objects.count(), 1)
+        # auto_now/auto_now_add timestamps survive the restore.
+        self.assertEqual(Campaign.objects.get().created_at.date(), timezone.localdate())
+
+    def test_restore_maps_unknown_owner_to_none(self):
+        self._seed()
+        payload = json.loads(self.client.get("/api/backup/export/").content)
+        payload["data"]["campaigns.Campaign"][0]["owner"] = "ghost"
+        upload = SimpleUploadedFile("backup.json", json.dumps(payload).encode())
+        r = self.client.post("/api/backup/restore/", {"file": upload, "confirm": "replace"}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIsNone(Campaign.objects.get().owner)
+
+    def test_restore_requires_confirm(self):
+        self._seed()
+        export = json.loads(self.client.get("/api/backup/export/").content)
+        upload = SimpleUploadedFile("backup.json", json.dumps(export).encode())
+        r = self.client.post("/api/backup/restore/", {"file": upload}, format="multipart")
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_restore_requires_staff(self):
+        self._seed()
+        export = json.loads(self.client.get("/api/backup/export/").content)
+        plain = get_user_model().objects.create_user("plain", password="pw123456")
+        self.client.force_authenticate(plain)
+        upload = SimpleUploadedFile("backup.json", json.dumps(export).encode())
+        r = self.client.post("/api/backup/restore/", {"file": upload, "confirm": "replace"}, format="multipart")
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(Campaign.objects.count(), 1)
+
+    def test_restore_rejects_unknown_file(self):
+        upload = SimpleUploadedFile("notes.txt", b"definitely not a backup")
+        r = self.client.post("/api/backup/restore/", {"file": upload, "confirm": "replace"}, format="multipart")
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_database_download_streams_sqlite(self):
+        r = self.client.get("/api/backup/database/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(bytes(r.content).startswith(b"SQLite format 3\x00"))

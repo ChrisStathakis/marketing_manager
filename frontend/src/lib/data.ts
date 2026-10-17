@@ -21,8 +21,8 @@ export async function fetchOne<T>(url: string, params?: ListParams): Promise<T> 
   return data;
 }
 
-/** Download a CSV endpoint as a file, with the current filters and auth. */
-export async function downloadCsv(url: string, params: ListParams | undefined, filename: string) {
+/** Download any authenticated endpoint as a file. */
+export async function downloadFile(url: string, params: ListParams | undefined, filename: string) {
   const res = await api.get<Blob>(url, { params, responseType: 'blob' });
   const blobUrl = URL.createObjectURL(res.data);
   const a = document.createElement('a');
@@ -34,14 +34,21 @@ export async function downloadCsv(url: string, params: ListParams | undefined, f
   URL.revokeObjectURL(blobUrl);
 }
 
+/** Download a CSV endpoint as a file, with the current filters and auth. */
+export async function downloadCsv(url: string, params: ListParams | undefined, filename: string) {
+  return downloadFile(url, params, filename);
+}
+
 /** Shared react-query key factory. */
 export const qk = {
   config: ['config'] as const,
+  dashboardRoot: ['dashboard'] as const,
   dashboard: (params?: ListParams) => ['dashboard', params] as const,
   campaigns: (params?: ListParams) => ['campaigns', params] as const,
   campaign: (id: number | string) => ['campaign', id] as const,
   channels: (params?: ListParams) => ['channels', params] as const,
   content: (params?: ListParams) => ['content', params] as const,
+  metricsRoot: ['metrics'] as const,
   metrics: (params?: ListParams) => ['metrics', params] as const,
   spend: (params?: ListParams) => ['spend', params] as const,
   tasks: (params?: ListParams) => ['tasks', params] as const,

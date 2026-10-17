@@ -148,6 +148,27 @@ export interface Product {
 
 export interface AppConfig {
   registration_enabled: boolean;
+  users_exist: boolean;
+}
+
+export interface IntegrationField {
+  name: string;
+  label: string;
+  secret: boolean;
+  multiline?: boolean;
+  min_length?: number;
+  placeholder?: string;
+  prefix?: string;
+  hint?: string;
+}
+
+export interface IntegrationConfigField {
+  name: string;
+  label: string;
+  env_var?: string;
+  placeholder?: string;
+  required?: boolean;
+  hint?: string;
 }
 
 export interface Integration {
@@ -160,13 +181,31 @@ export interface Integration {
   where_to_get: string;
   steps: string[];
   security_note: string;
+  fields?: IntegrationField[];
+  config_fields?: IntegrationConfigField[];
+  sync_endpoint?: string;
   configured: boolean;
   source: 'database' | 'env' | null;
   key_hint: string | null;
   stored: boolean;
   stored_unreadable: boolean;
+  config: Record<string, string>;
+  last_synced_at: string | null;
+  last_sync_error: string;
   updated_at: string | null;
   updated_by: string | null;
+}
+
+/** Response of POST /api/integrations/google-analytics/sync/. */
+export interface SyncResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  rows: number;
+  unmatched: string[];
+  start: string | null;
+  end: string | null;
+  last_synced_at: string | null;
 }
 
 export interface Paginated<T> {
@@ -181,4 +220,11 @@ export interface ImportResult {
   updated: number;
   error_count: number;
   errors: { row: number; error: string }[];
+}
+
+/** Response of POST /api/backup/restore/. */
+export interface RestoreResult {
+  kind: 'json' | 'database';
+  detail: string;
+  restored?: Record<string, number>;
 }

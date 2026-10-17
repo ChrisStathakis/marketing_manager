@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-from django.conf import settings
 from django.db import connection
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -10,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from campaigns.models import Campaign
+from config.registration import registration_open, users_exist
 from results.models import DailyMetric
 
 
@@ -128,4 +128,4 @@ def health(request):
 @permission_classes([AllowAny])
 def public_config(request):
     """Non-secret runtime flags the frontend needs before login."""
-    return Response({"registration_enabled": settings.ALLOW_REGISTRATION})
+    return Response({"registration_enabled": registration_open(), "users_exist": users_exist()})

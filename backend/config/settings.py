@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "plans",
     "suggestions",
     "integrations",
+    "google_sync",
     "shop",
 ]
 
@@ -84,12 +85,9 @@ if os.environ.get("DATABASE_URL"):
         os.environ["DATABASE_URL"], conn_max_age=600, conn_health_checks=True
     )
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-        "OPTIONS": {"min_length": int(os.environ.get("DJANGO_PASSWORD_MIN_LENGTH", "4"))},
-    },
-]
+# Passwords are intentionally unrestricted: this is a small single-admin tool
+# and the operator asked for simple passwords. Any non-empty value is accepted.
+AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
@@ -125,8 +123,9 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = os.environ.get("DJANGO_CORS_ALLOW_ALL", "True").lower() in ("1", "true", "yes")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("DJANGO_CORS_ORIGINS", "").split(",") if o.strip()]
 
-# Auth policy. This app is meant for a single admin; public registration is
-# opt-in via DJANGO_ALLOW_REGISTRATION=True.
+# Auth policy. Registration is open while the instance has no users yet (the
+# first account becomes the admin); afterwards it is opt-in via
+# DJANGO_ALLOW_REGISTRATION=True.
 ALLOW_REGISTRATION = os.environ.get("DJANGO_ALLOW_REGISTRATION", "False").lower() in ("1", "true", "yes")
 
 # SimpleJWT

@@ -1,6 +1,6 @@
 # API reference
 
-Base `/api/`. Auth: `POST /api/token/`, `POST /api/token/refresh/`, `POST /api/register/` (disabled by default — enable with `DJANGO_ALLOW_REGISTRATION=True`; username + password, min length via `DJANGO_PASSWORD_MIN_LENGTH`, returns JWT pair). Authenticated calls use `Authorization: Bearer <access>`.
+Base `/api/`. Auth: `POST /api/token/`, `POST /api/token/refresh/`, `POST /api/register/` (open until the first account exists — that account becomes the admin; afterwards opt-in with `DJANGO_ALLOW_REGISTRATION=True`; username + password only, no email and no minimum length, returns JWT pair). Authenticated calls use `Authorization: Bearer <access>`.
 
 ## Resources
 
@@ -31,7 +31,13 @@ Range filters power the calendar (`content?publish_at__gte=…&publish_at__lte=�
 - `POST /api/metrics/import-csv/` — file field `file`, columns `campaign,date,revenue,orders,spend,ctr,roas` (roas derived from revenue/spend when omitted).
 - `POST /api/spend/import-csv/` — columns `campaign,channel,date,spend,impressions,clicks,conversions`.
 - Both import endpoints return `{created, updated, error_count, errors: [{row, error}]}`; invalid rows are skipped and reported with their CSV line number.
+- Imported rows are always marked `source="manual"`, so re-importing a CSV overrides a row that a sync produced.
 - `GET /api/metrics/export-csv/` and `GET /api/spend/export-csv/` — stream an import-compatible CSV honouring every list filter above (`campaign`, date ranges, channel…). A null channel exports as an empty value.
+
+### Row provenance
+
+`metrics` and `spend` rows carry a read-only `source`: `manual` (default, CSV or UI), `ga4` or
+`google_ads` (written by a sync). It is never accepted from clients — posting it is ignored.
 
 ## Suggestions
 
@@ -43,12 +49,24 @@ Range filters power the calendar (`content?publish_at__gte=…&publish_at__lte=�
 
 ## Integrations
 
-Third-party API keys (see [api-keys.md](api-keys.md)). Values are write-only: stored encrypted, never returned.
+Third-party credentials (see [api-keys.md](api-keys.md)). Secret values are write-only: stored
+encrypted, never returned. Non-secret settings are returned so the UI can pre-fill them.
 
-- `GET /api/integrations/` — any authenticated user. Registry entries (label, summary, description, `env_var`, `used_by`, `where_to_get`, `steps`, `security_note`) plus status: `configured`, `source` (`database` | `env` | `null`), `key_hint`, `stored`, `stored_unreadable`, `updated_at`, `updated_by`.
-- `PUT /api/integrations/{provider}/` body `{"key": "..."}` — staff only; saves/replaces the key (min 16 chars). Response is the same status object, never the value.
-- `DELETE /api/integrations/{provider}/` — staff only; removes the stored key, so the `env_var` fallback (if set) becomes active again.
-- Unknown provider slugs → 404.
+- `GET /api/integrations/` — any authenticated user. Registry entries (label, summary, description, `env_var`, `used_by`, `where_to_get`, `steps`, `security_note`, `fields`, `config_fields`, optional `sync_endpoint`) plus status: `configured`, `source` (`database` | `env` | `null`), `key_hint`, `stored`, `stored_unreadable`, `config` (non-secret values), `last_synced_at`, `last_sync_error`, `updated_at`, `updated_by`.
+- `PUT /api/integrations/{provider}/` — staff only. Body `{"fields": {"<name>": "…"}, "config": {"<name>": "…"}}`; the classic single-key shape `{"key": "…"}` still works for providers whose only field is `key`. Omitted secret fields keep their stored value (so settings can be changed without re-pasting the key); string fields are length-checked, and required settings must resolve (store or `env_var`). Response is the same status object, never a secret.
+- `DELETE /api/integrations/{provider}/` — staff only; removes the stored credential, so the `env_var` fallback (if set) becomes active again.
+- Unknown provider slugs → 404. Unknown body keys are ignored; an unsupported `key` shape → 400.
+
+### Google Analytics sync
+
+- `POST /api/integrations/google-analytics/sync/` — staff only. Body `{"days"?: 1..365}` (default 7).
+  Pulls `totalRevenue` / `transactions` per day and `sessionCampaignName` from the GA4 Data API and
+  upserts daily metrics matched on `Campaign.utm_campaign`.
+  Returns `{created, updated, skipped, rows, unmatched: [str], start, end, last_synced_at}`.
+  - `400` when the integration is not configured (missing key file or property ID), or `days` is invalid.
+  - `502` when Google refuses the request; the message is stored in `last_sync_error`.
+  - Only `revenue`, `orders`, `roas` and `source` are written — `spend`/`ctr` are left alone (GA4 has no ad cost).
+  - Equivalent CLI: `manage.py sync_google --days 7`.
 
 ## Dashboard
 
@@ -58,7 +76,15 @@ Third-party API keys (see [api-keys.md](api-keys.md)). Values are write-only: st
 - `?date__gte=YYYY-MM-DD&date__lte=YYYY-MM-DD` — explicit range (overrides `days` when `date__gte` is given).
 - No params → all time (deltas are `null`).
 
+## Backup & restore
+
+Settings → **Backup & restore** covers exporting and replacing data.
+
+- `GET /api/backup/export/` — any authenticated user. Streams a JSON file (`marketing-backup-YYYY-MM-DD.json`) with every business model: `channels`, `campaigns`, `content`, `ads`, `results`, `plans`, `suggestions`, `shop`. Users, passwords and stored API keys are **never** included; `Campaign.owner` is written as a username.
+- `GET /api/backup/database/` — any authenticated user, SQLite only (400 otherwise). Streams a consistent snapshot of the whole `db.sqlite3`, accounts included.
+- `POST /api/backup/restore/` — staff only. Multipart `file` plus `confirm=replace`. A JSON backup replaces all business data (accounts and API keys are kept); a `.sqlite3` file replaces the whole database after keeping a timestamped `.bak` copy next to it (restart the server afterwards). Unknown files → 400.
+
 ## Ops
 
 - `GET /api/health/` — DB-checked health (503 when the database is unreachable).
-- `GET /api/config/` — public runtime flags: `{"registration_enabled": bool}`.
+- `GET /api/config/` — public runtime flags: `{"registration_enabled": bool, "users_exist": bool}`.

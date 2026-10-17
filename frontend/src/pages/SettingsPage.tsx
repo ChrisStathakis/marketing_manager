@@ -2,6 +2,7 @@ import { Check, Copy, Link2, Palette, Store } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ApiKeysCard } from '@/components/ApiKeysCard';
+import { BackupCard } from '@/components/BackupCard';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuthStore } from '@/lib/auth-store';
 import { useTheme, type Theme } from '@/lib/theme';
@@ -17,6 +18,7 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Utilities and preferences." />
       <div className="space-y-4">
         <ApiKeysCard />
+        <BackupCard />
         <div className="grid gap-4 lg:grid-cols-2">
           <UtmBuilder />
           <div className="grid gap-4">

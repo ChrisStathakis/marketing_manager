@@ -20,6 +20,9 @@ node_modules/
 frontend/dist/
 *.tsbuildinfo
 
+# Docs site build
+site/
+
 # Editors / OS
 .vscode/
 .idea/

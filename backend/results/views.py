@@ -39,7 +39,10 @@ class DailyMetricViewSet(viewsets.ModelViewSet):
             _, was_created = DailyMetric.objects.update_or_create(
                 campaign=row["campaign"],
                 date=row["date"],
-                defaults={field: row[field] for field in self.METRIC_FIELDS},
+                defaults={
+                    **{field: row[field] for field in self.METRIC_FIELDS},
+                    "source": DailyMetric.SOURCE_MANUAL,
+                },
             )
             return was_created
 

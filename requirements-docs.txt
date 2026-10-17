@@ -1,0 +1,6 @@
+# Docs site only — not needed to run the app or its tests.
+#
+#   python -m pip install -r requirements-docs.txt
+#   mkdocs serve -a 127.0.0.1:8080     # preview (8000 is Django's port)
+#   mkdocs build --strict              # static site into site/
+mkdocs-material>=9.5

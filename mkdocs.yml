@@ -1,0 +1,78 @@
+# Documentation site: a practical guide for the people who run campaigns, plus
+# the technical reference for whoever operates the app.
+#
+#   pip install -r requirements-docs.txt
+#   mkdocs serve -a 127.0.0.1:8080
+#   mkdocs build --strict
+site_name: social. — User Guide
+site_description: Plan campaigns, publish content, record results and see what actually works.
+site_dir: site
+docs_dir: docs
+copyright: social. — Made for the shop you grow.
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - User guide:
+      - Overview: guide/index.md
+      - Getting started: guide/getting-started.md
+      - Dashboard: guide/dashboard.md
+      - Campaigns: guide/campaigns.md
+      - Content & calendar: guide/content-calendar.md
+      - Results & reporting: guide/results.md
+      - Suggestions: guide/suggestions.md
+      - Shop: guide/shop.md
+      - Settings: guide/settings.md
+      - Troubleshooting & FAQ: guide/faq.md
+  - For developers:
+      - Development setup: getting-started.md
+      - Architecture: architecture.md
+      - API reference: api-reference.md
+      - API keys: api-keys.md

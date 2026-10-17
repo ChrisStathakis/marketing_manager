@@ -6,9 +6,11 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from ads.views import AdSpendViewSet
 from campaigns.views import CampaignViewSet
 from channels.views import ChannelViewSet
+from config.backup_views import backup_database, backup_export, backup_restore
 from config.dashboard import health, public_config, summary
 from config.registration import RegisterView
 from content.views import ContentItemViewSet
+from google_sync.views import sync_google_analytics
 from integrations.views import integration_detail, integration_list
 from plans.views import TaskViewSet
 from results.views import DailyMetricViewSet
@@ -33,7 +35,11 @@ urlpatterns = [
     path("api/health/", health),
     path("api/config/", public_config),
     path("api/integrations/", integration_list),
+    path("api/integrations/google-analytics/sync/", sync_google_analytics),
     path("api/integrations/<slug:provider>/", integration_detail),
+    path("api/backup/export/", backup_export, name="backup_export"),
+    path("api/backup/database/", backup_database, name="backup_database"),
+    path("api/backup/restore/", backup_restore, name="backup_restore"),
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),

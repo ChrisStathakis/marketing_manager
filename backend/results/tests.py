@@ -61,6 +61,44 @@ class MetricImportCsvTests(APITestCase):
         self.assertEqual(r.data["created"], 1)
         self.assertEqual(r.data["error_count"], 0)
 
+    def test_import_marks_rows_manual_and_overwrites_synced_rows(self):
+        DailyMetric.objects.create(
+            campaign=self.campaign, date="2026-10-05", revenue="10.00", spend="1.00",
+            source=DailyMetric.SOURCE_GA4,
+        )
+        body = "campaign,date,revenue,orders,spend\n" f"{self.campaign.id},2026-10-05,20.00,2,5.00\n"
+        r = self.upload(body)
+        self.assertEqual(r.data["updated"], 1)
+        metric = DailyMetric.objects.get(campaign=self.campaign, date="2026-10-05")
+        self.assertEqual(metric.source, DailyMetric.SOURCE_MANUAL)
+        self.assertEqual(str(metric.revenue), "20.00")
+
+
+class MetricSourceTests(APITestCase):
+    """`source` is reporting metadata — clients cannot set it."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="importer", password="pw123456")
+        self.client.force_authenticate(self.user)
+        self.campaign = Campaign.objects.create(name="Fall Baskets", budget="500.00")
+
+    def test_source_is_exposed_on_read(self):
+        DailyMetric.objects.create(
+            campaign=self.campaign, date="2026-10-01", revenue="5.00", source=DailyMetric.SOURCE_GA4
+        )
+        r = self.client.get("/api/metrics/", {"campaign": self.campaign.id})
+        self.assertEqual(r.data["results"][0]["source"], "ga4")
+
+    def test_source_sent_by_a_client_is_ignored(self):
+        r = self.client.post(
+            "/api/metrics/",
+            {"campaign": self.campaign.id, "date": "2026-10-02", "source": "ga4"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data["source"], DailyMetric.SOURCE_MANUAL)
+        self.assertEqual(DailyMetric.objects.get().source, DailyMetric.SOURCE_MANUAL)
+
 
 class MetricFilterExportTests(APITestCase):
     def setUp(self):

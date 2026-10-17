@@ -1,0 +1,12 @@
+{
+  "name": "social-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Captures the docs screenshots from a running app. Not part of CI.",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

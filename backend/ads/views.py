@@ -40,7 +40,10 @@ class AdSpendViewSet(viewsets.ModelViewSet):
                 campaign=row["campaign"],
                 channel=row.get("channel"),
                 date=row["date"],
-                defaults={field: row[field] for field in self.SPEND_FIELDS},
+                defaults={
+                    **{field: row[field] for field in self.SPEND_FIELDS},
+                    "source": AdSpend.SOURCE_MANUAL,
+                },
             )
             return was_created
 

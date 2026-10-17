@@ -11,7 +11,8 @@ from .models import AdSpend
 class AdSpendSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdSpend
-        fields = ["id", "campaign", "channel", "date", "spend", "impressions", "clicks", "conversions"]
+        fields = ["id", "campaign", "channel", "date", "spend", "impressions", "clicks", "conversions", "source"]
+        read_only_fields = ["source"]
 
     def validate(self, attrs):
         # The DB unique_together does not catch duplicates when channel is

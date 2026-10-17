@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
@@ -19,7 +19,7 @@ import { Skeleton } from '@/ui/skeleton';
 
 const schema = z.object({
   username: z.string().min(3, 'Use at least 3 characters.'),
-  password: z.string().min(8, 'Use at least 8 characters.'),
+  password: z.string().min(1, 'Password is required.'),
 });
 
 type Values = z.infer<typeof schema>;
@@ -27,6 +27,7 @@ type Values = z.infer<typeof schema>;
 export default function RegisterPage() {
   const login = useAuthStore((s) => s.login);
   const nav = useNavigate();
+  const qc = useQueryClient();
   const config = useQuery({
     queryKey: qk.config,
     queryFn: () => fetchOne<AppConfig>('/config/'),
@@ -39,10 +40,14 @@ export default function RegisterPage() {
     setError,
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
+  const firstUser = config.data ? !config.data.users_exist : false;
+
   const onSubmit = handleSubmit(async (values) => {
     try {
       await axios.post(`${import.meta.env.VITE_API_URL ?? '/api'}/register/`, values);
       const ok = await login(values.username, values.password);
+      // Registration state changed (the first account closes sign-ups).
+      qc.invalidateQueries({ queryKey: qk.config });
       if (ok) {
         toast.success('Account created');
         nav('/');
@@ -78,17 +83,21 @@ export default function RegisterPage() {
         </div>
       ) : (
         <>
-          <span className="eyebrow">Welcome to your workspace</span>
+          <span className="eyebrow">{firstUser ? 'First-time setup' : 'Welcome to your workspace'}</span>
           <h1 className="mt-3 mb-2 text-[clamp(1.6rem,2.5vw,2rem)] leading-tight font-semibold tracking-[-0.035em]">
-            Create your account.
+            {firstUser ? 'Set up your admin account.' : 'Create your account.'}
           </h1>
-          <p className="mb-6 text-sm text-muted-foreground">A few seconds and you're in.</p>
+          <p className="mb-6 text-sm text-muted-foreground">
+            {firstUser
+              ? 'This first account is the admin — it can manage everything. Registration closes after this.'
+              : "A few seconds and you're in."}
+          </p>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
             {errors.root && <Alert variant="destructive">{errors.root.message}</Alert>}
             <Field label="Username" htmlFor="username" error={errors.username?.message}>
               <Input id="username" autoComplete="username" autoFocus {...register('username')} />
             </Field>
-            <Field label="Password" htmlFor="password" error={errors.password?.message} hint="At least 8 characters.">
+            <Field label="Password" htmlFor="password" error={errors.password?.message} hint="Any password you like.">
               <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
             </Field>
             <Button type="submit" className="mt-2 w-full" disabled={isSubmitting}>

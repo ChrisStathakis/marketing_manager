@@ -10,7 +10,8 @@ from .models import DailyMetric
 class DailyMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyMetric
-        fields = ["id", "campaign", "date", "revenue", "orders", "spend", "ctr", "roas"]
+        fields = ["id", "campaign", "date", "revenue", "orders", "spend", "ctr", "roas", "source"]
+        read_only_fields = ["source"]
 
 
 class MetricImportRowSerializer(serializers.Serializer):
