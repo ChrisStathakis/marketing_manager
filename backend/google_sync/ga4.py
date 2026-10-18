@@ -36,6 +36,10 @@ _DATE_FORMAT = "%Y%m%d"
 DIMENSIONS = ["date", "sessionCampaignName"]
 METRICS = ["totalRevenue", "transactions"]
 
+# The organic-growth report: who arrived, from where, and did they read anything.
+TRAFFIC_DIMENSIONS = ["date", "sessionSource", "sessionMedium"]
+TRAFFIC_METRICS = ["sessions", "engagedSessions", "totalUsers", "screenPageViews"]
+
 
 class GA4Error(RuntimeError):
     """Credentials are missing/invalid, or the GA4 API refused the request."""
@@ -177,20 +181,35 @@ def fetch_campaign_daily(
     timeout: int = 30,
 ) -> list[dict]:
     """Fetch per-day, per-campaign revenue and orders for an inclusive range."""
+    return parse_report(
+        run_report(credentials_json, property_id, campaign_body(start_date, end_date), timeout=timeout)
+    )
+
+
+def campaign_body(start_date, end_date) -> dict:
+    return {
+        "dateRanges": [{"startDate": start_date.isoformat(), "endDate": end_date.isoformat()}],
+        "dimensions": [{"name": name} for name in DIMENSIONS],
+        "metrics": [{"name": name} for name in METRICS],
+        "limit": 100000,
+    }
+
+
+def traffic_body(start_date, end_date) -> dict:
+    return {
+        "dateRanges": [{"startDate": start_date.isoformat(), "endDate": end_date.isoformat()}],
+        "dimensions": [{"name": name} for name in TRAFFIC_DIMENSIONS],
+        "metrics": [{"name": name} for name in TRAFFIC_METRICS],
+        "limit": 100000,
+    }
+
+
+def run_report(credentials_json: str, property_id: str, body: dict, timeout: int = 30) -> dict:
+    """Exchange the service account for a token and run one report."""
     token = _access_token(credentials_json, timeout=timeout)
-    body = json.dumps(
-        {
-            "dateRanges": [
-                {"startDate": start_date.isoformat(), "endDate": end_date.isoformat()}
-            ],
-            "dimensions": [{"name": name} for name in DIMENSIONS],
-            "metrics": [{"name": name} for name in METRICS],
-            "limit": 100000,
-        }
-    ).encode()
     request = urllib.request.Request(
         f"{API_ROOT}/properties/{property_id}:runReport",
-        data=body,
+        data=json.dumps(body).encode(),
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -198,7 +217,7 @@ def fetch_campaign_daily(
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode())
+            return json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:500]
         raise GA4Error(f"GA4 API error {exc.code}: {detail}") from exc
@@ -206,4 +225,47 @@ def fetch_campaign_daily(
         raise GA4Error(f"Could not reach the GA4 API: {exc}") from exc
     except (TypeError, ValueError) as exc:
         raise GA4Error(f"GA4 returned an unreadable response: {exc}") from exc
-    return parse_report(payload)
+
+
+def parse_traffic_report(payload: dict) -> list[dict]:
+    """Turn a ``runReport`` response into per-day, per-source traffic rows.
+
+    Returns ``[{"date", "source", "medium", "sessions", "engaged_sessions",
+    "users", "views"}]``. ``(direct)``/``(none)`` are GA4's own placeholders and
+    are kept as-is: the report is about where people came from, and "nowhere"
+    is a legitimate answer worth seeing.
+    """
+    rows = []
+    for row in payload.get("rows") or []:
+        dimensions = [value.get("value", "") for value in row.get("dimensionValues") or []]
+        metrics = [value.get("value", "0") for value in row.get("metricValues") or []]
+        if len(dimensions) < len(TRAFFIC_DIMENSIONS) or len(metrics) < len(TRAFFIC_METRICS):
+            continue
+        day = _parse_date(dimensions[0])
+        if day is None:
+            continue
+        rows.append(
+            {
+                "date": day,
+                "source": dimensions[1].strip() or "(direct)",
+                "medium": dimensions[2].strip(),
+                "sessions": _to_int(metrics[0]),
+                "engaged_sessions": _to_int(metrics[1]),
+                "users": _to_int(metrics[2]),
+                "views": _to_int(metrics[3]),
+            }
+        )
+    return rows
+
+
+def fetch_traffic_daily(
+    credentials_json: str,
+    property_id: str,
+    start_date,
+    end_date,
+    timeout: int = 30,
+) -> list[dict]:
+    """Fetch per-day, per-source sessions for an inclusive range."""
+    return parse_traffic_report(
+        run_report(credentials_json, property_id, traffic_body(start_date, end_date), timeout=timeout)
+    )

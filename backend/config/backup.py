@@ -3,8 +3,10 @@
 Two formats are supported:
 
 * **JSON business data** — every business model (campaigns, channels, content,
-  results, ad spend, tasks, suggestions, products, orders) is serialized to a
-  plain dict. Users, passwords and stored API keys are deliberately *excluded*.
+  results, ad spend, tasks, suggestions, products, orders, saved growth cards,
+  post performance, experiments and GA4 traffic snapshots) is serialized to a
+  plain dict. Users, passwords and
+  stored API keys are deliberately *excluded*.
   ``Campaign.owner`` is written as a username so a restore can map it even when
   the backup is loaded into an instance with different user ids.
 
@@ -46,6 +48,10 @@ BUSINESS_MODELS = [
     "results.DailyMetric",
     "suggestions.Suggestion",
     "plans.Task",
+    "growth.StatCard",
+    "growth.PostPerformance",
+    "growth.GrowthExperiment",
+    "growth.TrafficSnapshot",
 ]
 
 

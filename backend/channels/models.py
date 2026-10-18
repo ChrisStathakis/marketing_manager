@@ -6,8 +6,13 @@ class Channel(models.Model):
         ("facebook", "Facebook"),
         ("instagram", "Instagram"),
         ("tiktok", "TikTok"),
-        ("google", "Google"),
+        ("youtube", "YouTube"),
         ("x", "X"),
+        ("reddit", "Reddit"),
+        ("telegram", "Telegram"),
+        ("discord", "Discord"),
+        ("newsletter", "Newsletter"),
+        ("google", "Google"),
         ("other", "Other"),
     ]
 

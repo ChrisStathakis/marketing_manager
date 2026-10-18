@@ -4,7 +4,7 @@ Manage social/ads campaigns for your basket shop: plan content, track spend + re
 
 ## Layout
 
-- `backend/` — Django 5 + DRF + SimpleJWT (SQLite dev, Postgres-ready). Apps: `campaigns channels content ads results plans suggestions shop`.
+- `backend/` — Django 5 + DRF + SimpleJWT (SQLite dev, Postgres-ready). Apps: `campaigns channels content ads results plans suggestions shop growth`.
 - `frontend/` — Vite + React 19 + TS + React Router + TanStack Query + Zustand + Recharts.
 - `docs/` — the documentation site: a user guide for the people running campaigns, plus setup, architecture and API reference.
 
@@ -43,6 +43,7 @@ See `docs/api-reference.md` for the full list (pagination, filters, CSV).
 - `GET/PUT/DELETE /api/integrations/` manage third-party credentials from the UI (write-only, encrypted at rest) — see `docs/api-keys.md`
 - `POST /api/integrations/google-analytics/sync/` (or `manage.py sync_google --days 7`) imports GA4 revenue/orders per campaign into daily metrics, so results don't have to be imported as CSV
 - `GET /api/backup/export/` (JSON business data), `GET /api/backup/database/` (whole SQLite file), `POST /api/backup/restore/` (staff; replaces everything from a JSON or `.sqlite3` backup) — see Settings → Backup & restore
+- **Growth studio** (`/growth`): `GET /api/growth/suggest/` picks a card from the public catchandstats.com season data, `POST /api/growth/cards/preview/` renders a PNG (Pillow — X/Instagram/story/Reddit/OG sizes), `POST /api/growth/captions/` drafts copy in EN/EL/TR/SR/LT, `POST /api/growth/plan/` fills next week's calendar and to-dos, `GET /api/growth/report/` summarises logged post performance (by platform, card type, metric, with a window-over-window trend), `GET /api/growth/insights/` turns that into rule-based next actions, and `GET/POST /api/growth/traffic/` (`…/traffic/sync/`) reads GA4 sessions per source so clicks can be checked against visits. Read-only against the site: nothing is published automatically.
 
 ## Tests
 
@@ -81,4 +82,5 @@ build instead of shipping. Screenshots are regenerated with the tool in `tools/s
 - Google Analytics 4 sync (optional): add a service-account JSON + GA4 property ID in Settings → API keys (or `GOOGLE_ANALYTICS_CREDENTIALS` / `GOOGLE_ANALYTICS_PROPERTY_ID`), then Sync now. Rows that match no `utm_campaign` are reported instead of dropped. See `docs/api-keys.md`.
 - Result rows record where they came from (`source`: `manual` / `ga4` / `google_ads`); a CSV import always marks rows `manual`, and a GA4 sync only writes revenue/orders — never spend.
 - AI suggestions run server-side only; never put API keys in `VITE_*` vars. Manage them in Settings → API keys (encrypted in the app database) or in `backend\.env` — both stay server-side.
+- Growth studio reads the public `catchandstats.com` API read-only and caches each season under `backend/media/growth-cache/` for six hours. Override with `CATCHANDSTATS_API_BASE`, `CATCHANDSTATS_SITE_URL`, `CATCHANDSTATS_TIMEOUT`, `GROWTH_CACHE_TTL_HOURS` and `GROWTH_CACHE_DIR`. Card rendering needs `Pillow` (installed from `backend/requirements.txt`); in production serve `backend/media/` yourself, since Django only serves it in `DEBUG`. The traffic panel reuses the `google-analytics` integration and can also be filled by `python manage.py sync_google --organic`.
 - Demo data: from `backend\`, run `..\.venv\Scripts\python.exe manage.py seed_demo` to fill the app with sample campaigns, content, metrics and orders (add `--reset` to rebuild). Users and saved API keys are never touched.

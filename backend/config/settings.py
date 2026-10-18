@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "integrations",
     "google_sync",
     "shop",
+    "growth",
 ]
 
 MIDDLEWARE = [
@@ -97,6 +98,11 @@ USE_TZ = True
 STATIC_URL = "static/"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# The public site the growth tools read from. Read-only: this app never writes
+# to catchandstats.com, it only shapes the public JSON and links back to it.
+CATCHANDSTATS_SITE_URL = os.environ.get("CATCHANDSTATS_SITE_URL", "https://catchandstats.com")
+CATCHANDSTATS_API_BASE = os.environ.get("CATCHANDSTATS_API_BASE", "https://catchandstats.com/api")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

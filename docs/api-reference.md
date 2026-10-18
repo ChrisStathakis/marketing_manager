@@ -6,7 +6,7 @@ Base `/api/`. Auth: `POST /api/token/`, `POST /api/token/refresh/`, `POST /api/r
 
 Full CRUD (`GET`, `POST`, `PATCH`, `PUT`, `DELETE` on detail routes):
 
-- `/api/campaigns/`, `/api/channels/`, `/api/content/`, `/api/spend/`, `/api/metrics/`, `/api/tasks/`, `/api/suggestions/`, `/api/products/`, `/api/orders/`
+- `/api/campaigns/`, `/api/channels/`, `/api/content/`, `/api/spend/`, `/api/metrics/`, `/api/tasks/`, `/api/suggestions/`, `/api/products/`, `/api/orders/`, `/api/performance/`, `/api/experiments/`
 
 ## Pagination, search and filters
 
@@ -76,11 +76,84 @@ encrypted, never returned. Non-secret settings are returned so the UI can pre-fi
 - `?date__gte=YYYY-MM-DD&date__lte=YYYY-MM-DD` — explicit range (overrides `days` when `date__gte` is given).
 - No params → all time (deltas are `null`).
 
+## Organic growth
+
+Tools for the read-only growth workflow around catchandstats.com: build a share image from the
+public season data, draft captions, and seed the calendar. Nothing is published from here.
+
+Season parameters accept a season primary key (`6`), the API code (`E2026`) or the title
+(`2026-2027`). Season data is cached on disk for six hours by default
+(`GROWTH_CACHE_TTL_HOURS`); see `CATCHANDSTATS_API_BASE`, `CATCHANDSTATS_SITE_URL`,
+`CATCHANDSTATS_TIMEOUT` and `GROWTH_CACHE_DIR`.
+
+Reads are hardened: transient HTTP statuses (`408`, `425`, `429`, `5xx`) are retried up to three
+times honouring `Retry-After`, other `4xx` and non-JSON bodies fail immediately, and a failed
+refresh falls back to the cached season with `stale: true` and an explanatory `warning` instead
+of an error (truncated pagination is reported the same way).
+
+- `GET /api/growth/meta/` — seasons, default season, priority markets and clubs, card kinds,
+  formats and sizes, platforms, locales, the metric catalogue, the resolved site URL, the
+  `sources` map (GA4 session source → platform), `ga4_configured` and `can_sync`.
+  Returns `warning` (and an empty season list) when the public API is unreachable.
+- `GET /api/growth/players/` — picker data for the selected season. Filters: `season`,
+  `search` (player or club), `country` (`GR`, `TR`, `RS`, `LT`) and `metric`;
+  `ordering` = `-<metric>` or `player`; `page`, `page_size` (max 200). Returns
+  `{count, page, page_size, season, fetched_at, stale, warning, teams, results}`.
+- `GET /api/growth/suggest/` — picks the next card. Parameters: `kind` (`player`, `metric`,
+  `comparison`, `round_recap`, `matchup`), `season`, `country`, `metric` (alias `story`),
+  `player` (player-team-season id), `opponent`, `teams` (comma-separated club names for
+  `matchup`) and `utm_campaign`. Returns `{spec, season, fetched_at, stale, warning, link}`;
+  `400` for an unknown kind/metric, `502` when the site is down.
+- `POST /api/growth/cards/preview/` — body `{spec}` or any `suggest` parameter set plus
+  `format` (`x`, `instagram`, `story`, `reddit`, `og`). Returns `image/png` (1600×900 by
+  default). Nothing is stored.
+- `POST /api/growth/captions/` — body `{spec | kind…, link?, utm_campaign?, platforms?,
+  locales?}`. Returns `{spec, link, drafts[]}`; each draft carries `platform`, `locale`,
+  `title` (Reddit only), `text`, `hashtags`, `length`, `limit`, `within_limit` and
+  `localisation` (`full` for EN/EL, `hook` for TR/SR/LT). Without an explicit `link`, each
+  platform gets its own UTM URL except Reddit, which is deliberately left without one.
+- `POST /api/growth/plan/` — body `{campaign, start_date?, round_label?, season?, country?,
+  briefs?}`. `start_date` snaps back to its Monday. Creates one `ContentItem` per slot (8)
+  plus a matching `Task`; idempotent, so re-running reports `skipped`. Returns `{created,
+  skipped, tasks, week_start, missing_channels, items, warning}`.
+- `GET/POST /api/cards/` — the saved-card library. `POST` body `{spec | kind…, format?,
+  campaign?}` renders and stores the PNG in the media library together with the exact
+  numbers. `DELETE /api/cards/{id}/` removes the record; the file stays on disk.
+- `POST /api/cards/{id}/recaption/` — body `{link?, platforms?, locales?}`; re-uses the
+  stored spec to produce new copy.
+- `GET /api/growth/report/` — `?days=1..365` (default 30) and `?campaign=`. Returns `totals`
+  and `previous_totals` (posts, impressions, engagements, comments, clicks,
+  `engagement_rate`, `click_rate`), `by_platform` (same shape plus `best_post`) ranked by
+  click rate, `by_kind` and `by_metric` breakdowns, `trend` (per-platform change against the
+  equally long window before), `traffic` (the GA4 summary below), `traffic_configured` and
+  the top five `best_posts`.
+- `GET /api/growth/insights/` — `?days=1..365` (default 30) and `?campaign=`. The report
+  aggregated into `insights[]` (`severity`, `title`, `detail`, `evidence[]`, optional
+  `action`) and `next_cards[]` (`kind`, `metric`, `country`, `reason`) ready to drop into the
+  studio form. Rules cover best platform/card type/metric by click rate, clicks that never
+  produced GA4 sessions, GA4 traffic from an unlogged channel, reach without conversion,
+  falling behind the cadence and stale experiments. Problems (`warn`) sort first, then wins,
+  then housekeeping.
+- `GET /api/growth/traffic/` — `?days=1..365` (default 30) and `?source=`. Stored GA4
+  snapshots plus a `summary` (`totals`, `by_platform`, `by_source`), `configured`,
+  `can_sync` and `last_synced_at`. Reads the database only; never calls Google.
+- `POST /api/growth/traffic/sync/` — body `{days?}` (default 30). Pulls per-day sessions per
+  source from the GA4 Data API into `TrafficSnapshot` rows (idempotent per date/source/medium)
+  and returns `{created, updated, rows, sessions, social_sessions, other_sources, start,
+  end, last_synced_at}`. Staff only; `400` when GA4 is not configured, `502` when Google
+  refuses the call.
+- `/api/performance/` — CRUD for published-post numbers, including `kind`, `metric_key`, and
+  the derived `click_rate`/`engagement_rate`. `/api/experiments/` — CRUD for growth
+  experiments (`name`, `hypothesis`, `metric`, `status`, `result`, dates).
+
+GA4 sessions per source are imported with `python manage.py sync_google --organic` (revenue
+sync plus organic; `--days` defaults to 7 for revenue and 30 for traffic).
+
 ## Backup & restore
 
 Settings → **Backup & restore** covers exporting and replacing data.
 
-- `GET /api/backup/export/` — any authenticated user. Streams a JSON file (`marketing-backup-YYYY-MM-DD.json`) with every business model: `channels`, `campaigns`, `content`, `ads`, `results`, `plans`, `suggestions`, `shop`. Users, passwords and stored API keys are **never** included; `Campaign.owner` is written as a username.
+- `GET /api/backup/export/` — any authenticated user. Streams a JSON file (`marketing-backup-YYYY-MM-DD.json`) with every business model: `channels`, `campaigns`, `content`, `ads`, `results`, `plans`, `suggestions`, `shop`, saved `cards`, `performance`, `experiments` and GA4 `traffic` snapshots. Users, passwords and stored API keys are **never** included; `Campaign.owner` is written as a username.
 - `GET /api/backup/database/` — any authenticated user, SQLite only (400 otherwise). Streams a consistent snapshot of the whole `db.sqlite3`, accounts included.
 - `POST /api/backup/restore/` — staff only. Multipart `file` plus `confirm=replace`. A JSON backup replaces all business data (accounts and API keys are kept); a `.sqlite3` file replaces the whole database after keeping a timestamped `.bak` copy next to it (restart the server afterwards). Unknown files → 400.
 

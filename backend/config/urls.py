@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -11,6 +13,21 @@ from config.dashboard import health, public_config, summary
 from config.registration import RegisterView
 from content.views import ContentItemViewSet
 from google_sync.views import sync_google_analytics
+from growth.views import (
+    CaptionDraftView,
+    CardPreviewView,
+    GrowthExperimentViewSet,
+    GrowthInsightsView,
+    GrowthMetaView,
+    GrowthPlayersView,
+    GrowthReportView,
+    GrowthSuggestView,
+    GrowthTrafficSyncView,
+    GrowthTrafficView,
+    PlanSeedView,
+    PostPerformanceViewSet,
+    StatCardViewSet,
+)
 from integrations.views import integration_detail, integration_list
 from plans.views import TaskViewSet
 from results.views import DailyMetricViewSet
@@ -27,6 +44,9 @@ router.register("tasks", TaskViewSet)
 router.register("suggestions", SuggestionViewSet)
 router.register("products", ProductViewSet)
 router.register("orders", OrderRefViewSet)
+router.register("cards", StatCardViewSet)
+router.register("performance", PostPerformanceViewSet)
+router.register("experiments", GrowthExperimentViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -43,7 +63,21 @@ urlpatterns = [
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),
+    # Organic growth studio.
+    path("api/growth/meta/", GrowthMetaView.as_view()),
+    path("api/growth/players/", GrowthPlayersView.as_view()),
+    path("api/growth/suggest/", GrowthSuggestView.as_view()),
+    path("api/growth/cards/preview/", CardPreviewView.as_view()),
+    path("api/growth/captions/", CaptionDraftView.as_view()),
+    path("api/growth/plan/", PlanSeedView.as_view()),
+    path("api/growth/report/", GrowthReportView.as_view()),
+    path("api/growth/insights/", GrowthInsightsView.as_view()),
+    path("api/growth/traffic/", GrowthTrafficView.as_view()),
+    path("api/growth/traffic/sync/", GrowthTrafficSyncView.as_view()),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Django admin branding.
 admin.site.site_header = "Social Media Manager"

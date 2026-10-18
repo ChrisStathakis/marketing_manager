@@ -56,4 +56,10 @@ export const qk = {
   orders: (params?: ListParams) => ['orders', params] as const,
   products: (params?: ListParams) => ['products', params] as const,
   integrations: ['integrations'] as const,
+  growthMeta: ['growth', 'meta'] as const,
+  growthPlayers: (params?: ListParams) => ['growth', 'players', params] as const,
+  growthReport: (params?: ListParams) => ['growth', 'report', params] as const,
+  growthInsights: (params?: ListParams) => ['growth', 'insights', params] as const,
+  growthTraffic: (params?: ListParams) => ['growth', 'traffic', params] as const,
+  statCards: (params?: ListParams) => ['growth', 'cards', params] as const,
 };

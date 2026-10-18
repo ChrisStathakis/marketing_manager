@@ -15,6 +15,7 @@ const SuggestionsPage = lazy(() => import('./pages/SuggestionsPage'));
 const ProductsPage = lazy(() => import('./pages/ProductsPage'));
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
 const ChannelsPage = lazy(() => import('./pages/ChannelsPage'));
+const GrowthPage = lazy(() => import('./pages/GrowthPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="products" element={<ProductsPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="channels" element={<ChannelsPage />} />
+            <Route path="growth" element={<GrowthPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />

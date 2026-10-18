@@ -12,6 +12,7 @@ import {
   Radio,
   Settings,
   ShoppingCart,
+  Sparkles,
   TrendingUp,
   X,
   type LucideIcon,
@@ -31,6 +32,10 @@ interface NavSection {
 }
 
 const NAV_SECTIONS: NavSection[] = [
+  {
+    label: 'Grow',
+    items: [{ to: '/growth', label: 'Growth studio', icon: Sparkles }],
+  },
   {
     label: 'Plan',
     items: [
