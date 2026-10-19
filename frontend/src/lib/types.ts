@@ -263,8 +263,65 @@ export interface GrowthMeta {
   /** GA4 session source → studio platform, for reading the traffic table. */
   sources: Record<string, string>;
   ga4_configured: boolean;
+  instagram_configured: boolean;
+  instagram_enabled: boolean;
   can_sync: boolean;
   warning: string;
+}
+
+export interface InstagramTrackedPost {
+  id: number;
+  url: string;
+  shortcode: string;
+  media_pk: number;
+  owner_username: string;
+  caption: string;
+  comment_count: number;
+  comments_stored: number;
+  status: string;
+  status_label: string;
+  error: string;
+  last_scraped_at: string | null;
+  created_at: string;
+}
+
+export interface InstagramComment {
+  id: number;
+  post: number;
+  comment_pk: string;
+  author_username: string;
+  author_pk: string;
+  author_full_name: string;
+  text: string;
+  commented_at: string | null;
+  like_count: number;
+  child_count: number;
+  fetched_at: string;
+}
+
+export interface InstagramCommenter {
+  author_username: string;
+  comments: number;
+  posts: number;
+}
+
+export interface InstagramAnalysis {
+  totals: {
+    comments: number;
+    commenters: number;
+    repeat_commenters: number;
+    posts: number;
+  };
+  top_commenters: InstagramCommenter[];
+  repeat_commenters: InstagramCommenter[];
+  by_post: {
+    id: number;
+    shortcode: string;
+    owner_username: string;
+    stored: number;
+    reported: number;
+    last_scraped_at: string | null;
+  }[];
 }
 
 export interface CardRow {

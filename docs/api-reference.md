@@ -93,7 +93,8 @@ of an error (truncated pagination is reported the same way).
 
 - `GET /api/growth/meta/` — seasons, default season, priority markets and clubs, card kinds,
   formats and sizes, platforms, locales, the metric catalogue, the resolved site URL, the
-  `sources` map (GA4 session source → platform), `ga4_configured` and `can_sync`.
+  `sources` map (GA4 session source → platform), `ga4_configured`, `instagram_configured`,
+  `instagram_enabled` and `can_sync`.
   Returns `warning` (and an empty season list) when the public API is unreachable.
 - `GET /api/growth/players/` — picker data for the selected season. Filters: `season`,
   `search` (player or club), `country` (`GR`, `TR`, `RS`, `LT`) and `metric`;
@@ -145,6 +146,37 @@ of an error (truncated pagination is reported the same way).
 - `/api/performance/` — CRUD for published-post numbers, including `kind`, `metric_key`, and
   the derived `click_rate`/`engagement_rate`. `/api/experiments/` — CRUD for growth
   experiments (`name`, `hypothesis`, `metric`, `status`, `result`, dates).
+
+### Instagram comment research
+
+Read the commenters on a **public** Instagram post. This is the one place the studio talks to
+Instagram itself (not catchandstats.com), and it needs the `instagram` integration — see
+[api-keys.md](api-keys.md). It is **not** official API usage, and likers are not available by
+any method. Disable the whole group with `INSTAGRAM_SCRAPER_ENABLED=False`.
+
+- `/api/growth/instagram/posts/` — tracked posts. `POST` body `{"url"}` accepts a public
+  `/p/…`, `/reel/…` or `/tv/…` link and stores it with the media id decoded from the shortcode
+  (**no network call**; `400` for anything that is not a post URL). `GET` lists them with
+  `comments_stored`; an existing shortcode returns `200` instead of `201`. `DELETE` removes a
+  post and its comments.
+- `POST /api/growth/instagram/posts/{id}/scrape/` — staff only. Body `{"amount"?}` (default
+  `INSTAGRAM_MAX_COMMENTS`, 500). Fetches comments through the session and upserts them
+  (idempotent per comment id, so a re-run refreshes text and likes). Returns
+  `{fetched, created, updated, post}`. `400` when the integration is missing or the session is
+  dead, `429` when Instagram throttles, `502` for other upstream failures (the error is stored
+  on the post).
+- `GET /api/growth/instagram/comments/` — stored comments, paginated. Filters: `post`,
+  `author_username`; search: `author_username`, `author_full_name`, `text`; ordering:
+  `commented_at`, `like_count`, `fetched_at`.
+- `GET /api/growth/instagram/analysis/` — `?post=`. Aggregates: `totals` (`comments`,
+  `commenters`, `repeat_commenters`, `posts`), `top_commenters` and `repeat_commenters`
+  (`author_username`, `comments`, `posts`), and `by_post` (`stored` vs Instagram's `reported`
+  count).
+- `GET /api/growth/instagram/export/` — CSV honouring the comment filters (`post`,
+  `author_username`, `search`).
+- `POST /api/growth/instagram/test/` — staff only. Validates the stored session and returns
+  `{ok, username}`; `400` when the cookie is wrong or expired.
+- Equivalent CLI: `manage.py instagram_check [--url …] [--limit N]`.
 
 GA4 sessions per source are imported with `python manage.py sync_google --organic` (revenue
 sync plus organic; `--days` defaults to 7 for revenue and 30 for traffic).

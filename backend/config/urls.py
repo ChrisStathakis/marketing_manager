@@ -24,6 +24,11 @@ from growth.views import (
     GrowthSuggestView,
     GrowthTrafficSyncView,
     GrowthTrafficView,
+    InstagramAnalysisView,
+    InstagramCommentListView,
+    InstagramExportView,
+    InstagramPostViewSet,
+    InstagramTestView,
     PlanSeedView,
     PostPerformanceViewSet,
     StatCardViewSet,
@@ -47,6 +52,7 @@ router.register("orders", OrderRefViewSet)
 router.register("cards", StatCardViewSet)
 router.register("performance", PostPerformanceViewSet)
 router.register("experiments", GrowthExperimentViewSet)
+router.register("growth/instagram/posts", InstagramPostViewSet, basename="instagram-posts")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -74,6 +80,11 @@ urlpatterns = [
     path("api/growth/insights/", GrowthInsightsView.as_view()),
     path("api/growth/traffic/", GrowthTrafficView.as_view()),
     path("api/growth/traffic/sync/", GrowthTrafficSyncView.as_view()),
+    # Instagram audience research (comments on public posts).
+    path("api/growth/instagram/comments/", InstagramCommentListView.as_view()),
+    path("api/growth/instagram/analysis/", InstagramAnalysisView.as_view()),
+    path("api/growth/instagram/export/", InstagramExportView.as_view()),
+    path("api/growth/instagram/test/", InstagramTestView.as_view()),
 ]
 
 if settings.DEBUG:

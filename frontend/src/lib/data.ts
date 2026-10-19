@@ -62,4 +62,7 @@ export const qk = {
   growthInsights: (params?: ListParams) => ['growth', 'insights', params] as const,
   growthTraffic: (params?: ListParams) => ['growth', 'traffic', params] as const,
   statCards: (params?: ListParams) => ['growth', 'cards', params] as const,
+  instagramPosts: () => ['growth', 'instagram', 'posts'] as const,
+  instagramAnalysis: (params?: ListParams) => ['growth', 'instagram', 'analysis', params] as const,
+  instagramComments: (params?: ListParams) => ['growth', 'instagram', 'comments', params] as const,
 };

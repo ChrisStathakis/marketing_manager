@@ -11,7 +11,7 @@ Django + DRF + SimpleJWT. ORM only, no raw SQL.
 .\.venv\Scripts\python.exe backend\manage.py runserver
 ```
 
-Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions) — it can also be saved from the app's Settings → API keys (encrypted at rest, DB-first with env fallback; the `cryptography` requirement powers that). GA4 sync is optional too: `GOOGLE_ANALYTICS_CREDENTIALS` (service-account JSON) + `GOOGLE_ANALYTICS_PROPERTY_ID`, or save both in Settings → API keys, then `manage.py sync_google`. Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` (parsed by `dj-database-url`, installed via requirements); SQLite is the fallback.
+Env: copy `.env.example` to `.env`. `OPENAI_API_KEY` optional (AI suggestions) — it can also be saved from the app's Settings → API keys (encrypted at rest, DB-first with env fallback; the `cryptography` requirement powers that). GA4 sync is optional too: `GOOGLE_ANALYTICS_CREDENTIALS` (service-account JSON) + `GOOGLE_ANALYTICS_PROPERTY_ID`, or save both in Settings → API keys, then `manage.py sync_google`. Instagram comment research is optional and unofficial: `INSTAGRAM_SESSIONID` (a logged-in `sessionid` cookie, or save it in Settings → API keys) plus `INSTAGRAM_USERNAME` / `INSTAGRAM_PROXY`; check it with `manage.py instagram_check` and turn it off with `INSTAGRAM_SCRAPER_ENABLED=False`. It needs `curl_cffi` (in requirements). Postgres: set `DATABASE_URL=postgres://user:pass@host:5432/dbname` (parsed by `dj-database-url`, installed via requirements); SQLite is the fallback.
 
 ## Checks
 

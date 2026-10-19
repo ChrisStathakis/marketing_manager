@@ -8,8 +8,10 @@ It never publishes anything. It reads the public API, writes drafts, and stops. 
 
 !!! info "Read-only by design"
     The studio only calls the public JSON endpoints that the site itself uses. Nothing here
-    writes to catchandstats.com, and no account credentials for X, Reddit, Instagram, TikTok
-    or Telegram are stored anywhere.
+    writes to catchandstats.com, and no account credentials for X, Reddit, TikTok or Telegram
+    are stored anywhere. The one exception is the optional **Instagram comment research**
+    section (8), which uses a `sessionid` cookie from a throwaway Instagram account — see
+    *Instagram comment research* below.
 
 ## The weekly rhythm
 
@@ -151,6 +153,39 @@ builder and drafts the card immediately. The rules only fire once there is enoug
 (at least two posts per group, 200 impressions per platform), so an empty table produces a
 short list rather than confident nonsense.
 
+## Instagram comment research
+
+**8. Instagram commenters (research)** answers a different question: *who* is talking about a
+post you did not write. Paste a **public** post URL, press **Track post**, then **Scrape** to
+pull its comments. The studio stores each commenter and keeps them: re-scraping refreshes the
+text and likes without creating duplicates, so a post becomes a small history rather than a
+one-off lookup.
+
+Everything is read-only toward Instagram, but this is **not official API usage** and it comes
+with caveats worth reading:
+
+- Instagram stopped serving post data to logged-out requests in 2026, so this needs the
+  `sessionid` cookie of a **logged-in account**. Use a throwaway — see
+  [API keys](../api-keys.md#instagram-instagram_sessionid-instagram_username-instagram_proxy).
+- **Likers are not available by any method.** Only commenters.
+- It is unofficial and can break or get the account rate-limited (`429`) or logged out (`401`).
+  Keep the number of comments per scrape modest and add a proxy if you scrape often.
+- Commenter usernames are **personal data**. Collect only what you need, keep it no longer than
+  necessary, and **do not use it for unsolicited outreach** — the point is to understand the
+  audience, not to message it.
+
+The panel shows totals (comments, commenters, repeat commenters, posts tracked), the most
+active accounts, and a per-post breakdown of stored versus reported comments, with **Export CSV**
+for the rest of the work.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `INSTAGRAM_SCRAPER_ENABLED` | `True` | Turn the whole section off |
+| `INSTAGRAM_MAX_COMMENTS` | `500` | Cap on comments pulled per scrape |
+| `INSTAGRAM_TIMEOUT` | `20` | Per-request timeout in seconds |
+| `INSTAGRAM_PROXY` | — | Route requests through a proxy instead of your own IP |
+| `INSTAGRAM_API_BASE` | `https://www.instagram.com` | Override for testing only |
+
 ## Where the numbers come from
 
 The studio reads `https://catchandstats.com/api` and caches each season on disk for six hours
@@ -194,6 +229,9 @@ Season selectors accept any of `6`, `E2026` or `2026-2027`.
 | *Google Analytics is not configured* in section 6 | No GA4 credentials or property ID | Settings → API keys: service-account JSON + property ID |
 | **Sync GA4** answers `403` | Not staff, or the service account lacks the property | Run `manage.py sync_google --organic`; check Analytics access |
 | Traffic table is empty after a sync | Sessions came from sources the window did not cover, or no sessions yet | Widen the window; remember traffic is stored per day and source |
+| **Scrape** answers `400` in section 8 | The sessionid is missing, wrong or expired | Settings → API keys → Instagram: paste a fresh `sessionid`, then **Test session** |
+| **Scrape** answers `429` | Instagram is throttling that session | Wait a few minutes; scrape less per run, or set `INSTAGRAM_PROXY` |
+| Section 8 says *Instagram research is turned off* | `INSTAGRAM_SCRAPER_ENABLED=False` in `backend/.env` | Set it to `True` and restart the backend |
 | Card image does not load in the list | Media files are only served in `DEBUG` | Serve `backend/media/` from the web server in production |
 
 ## Next

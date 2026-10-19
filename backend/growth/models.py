@@ -165,3 +165,66 @@ class TrafficSnapshot(models.Model):
     @property
     def engagement_rate(self) -> float | None:
         return round(self.engaged_sessions / self.sessions, 4) if self.sessions else None
+
+
+class InstagramTrackedPost(models.Model):
+    """A public Instagram post whose commenters we collect (research only).
+
+    Stored separately from `PostPerformance`: that one is about *reach* for the
+    posts we publish, this one is about *who* engaged on someone else's post.
+    Nothing here is published to Instagram.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "Not fetched yet"),
+        ("ok", "Fetched"),
+        ("error", "Last fetch failed"),
+    ]
+
+    url = models.URLField(max_length=500)
+    shortcode = models.CharField(max_length=64, unique=True)
+    media_pk = models.BigIntegerField(help_text="Numeric media id decoded from the shortcode.")
+    owner_username = models.CharField(max_length=150, blank=True)
+    caption = models.TextField(blank=True)
+    comment_count = models.PositiveIntegerField(
+        default=0, help_text="How many comments Instagram reports, as last seen."
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    error = models.TextField(blank=True)
+    last_scraped_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"@{self.owner_username} · {self.shortcode}" if self.owner_username else self.shortcode
+
+
+class InstagramComment(models.Model):
+    """One commenter and their text on a tracked post.
+
+    Unique per ``(post, comment_pk)`` so re-running a scrape is idempotent and
+    only the text/likes are refreshed.
+    """
+
+    post = models.ForeignKey(InstagramTrackedPost, on_delete=models.CASCADE, related_name="comments")
+    comment_pk = models.CharField(max_length=40)
+    author_username = models.CharField(max_length=150)
+    author_pk = models.CharField(max_length=40, blank=True)
+    author_full_name = models.CharField(max_length=255, blank=True)
+    text = models.TextField(blank=True)
+    commented_at = models.DateTimeField(null=True, blank=True)
+    like_count = models.PositiveIntegerField(default=0, help_text="Likes on this comment.")
+    child_count = models.PositiveIntegerField(default=0, help_text="Replies to this comment.")
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-commented_at", "-fetched_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["post", "comment_pk"], name="growth_ig_unique_comment"),
+        ]
+        indexes = [models.Index(fields=["author_username"])]
+
+    def __str__(self):
+        return f"@{self.author_username}: {self.text[:40]}"

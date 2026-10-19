@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import GrowthExperiment, PostPerformance, StatCard, TrafficSnapshot
+from .models import (
+    GrowthExperiment,
+    InstagramComment,
+    InstagramTrackedPost,
+    PostPerformance,
+    StatCard,
+    TrafficSnapshot,
+)
 
 
 @admin.register(StatCard)
@@ -31,3 +38,29 @@ class TrafficSnapshotAdmin(admin.ModelAdmin):
     list_filter = ("source", "medium")
     date_hierarchy = "date"
     search_fields = ("source", "medium")
+
+
+class InstagramCommentInline(admin.TabularInline):
+    model = InstagramComment
+    extra = 0
+    fields = ("author_username", "text", "like_count", "commented_at")
+    readonly_fields = ("author_username", "text", "like_count", "commented_at")
+    can_delete = False
+    show_change_link = False
+
+
+@admin.register(InstagramTrackedPost)
+class InstagramTrackedPostAdmin(admin.ModelAdmin):
+    list_display = ("shortcode", "owner_username", "comment_count", "status", "last_scraped_at", "created_at")
+    list_filter = ("status",)
+    search_fields = ("shortcode", "url", "owner_username")
+    date_hierarchy = "created_at"
+    inlines = [InstagramCommentInline]
+
+
+@admin.register(InstagramComment)
+class InstagramCommentAdmin(admin.ModelAdmin):
+    list_display = ("author_username", "post", "like_count", "commented_at", "fetched_at")
+    list_filter = ("post",)
+    search_fields = ("author_username", "author_full_name", "text")
+    date_hierarchy = "commented_at"

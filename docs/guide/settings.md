@@ -57,6 +57,12 @@ console, so you do not have to remember where the keys come from.
 | --- | --- | --- |
 | **OpenAI** | **Generate AI** suggestions on a campaign. | AI suggestions are unavailable; rule suggestions still work. |
 | **Google Analytics 4** | Automatic revenue and orders in [Results](results.md) via **Sync now**. | You import results by CSV instead. |
+| **Instagram** | The [growth studio](growth.md#instagram-comment-research) can read who commented on a public post. | Section 8 of the growth studio stays empty and tells you to configure it. |
+
+!!! warning "Instagram is unofficial"
+    It is the one service here that is **not** an official API: it uses the `sessionid` cookie of
+    a logged-in (use a throwaway) account to read commenters on **public** posts. It can break,
+    it risks action against that account, and **likers are not available** — commenters only.
 
 ### Setting up Google Analytics
 
@@ -84,6 +90,17 @@ duplicates.
 
 If the card ever shows **"Saved key can't be decrypted"**, the server's secret key changed
 after the credential was saved. Remove the credential and save it again.
+
+### Setting up Instagram comment research
+
+1. Log in to Instagram in a browser — a **throwaway** account is safest.
+2. Open DevTools → **Application → Cookies → `https://www.instagram.com`** and copy the value of
+   the **`sessionid`** cookie.
+3. In the app: **Settings → API keys → Instagram → Set up**, paste it, and **Save**.
+4. Press **Test connection** — it reports which account the cookie belongs to.
+
+Then open [Growth studio](growth.md#instagram-comment-research), section 8. Sessions expire: if a
+scrape starts failing, log in again and paste a fresh cookie.
 
 ## Basket shop integration
 

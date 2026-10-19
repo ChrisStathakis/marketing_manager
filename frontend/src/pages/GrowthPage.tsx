@@ -6,9 +6,12 @@ import {
   Download,
   Loader2,
   Minus,
+  Plus,
   RefreshCw,
   Save,
+  ShieldCheck,
   Sparkles,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Wand2,
@@ -16,7 +19,7 @@ import {
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import api from '@/lib/api';
-import { fetchList, fetchOne, qk } from '@/lib/data';
+import { downloadCsv, fetchList, fetchOne, qk } from '@/lib/data';
 import { getErrorMessage } from '@/lib/errors';
 import { formatDate, formatNumber, toDateInputValue } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -34,6 +37,9 @@ import type {
   GrowthStatCard,
   GrowthTrafficResponse,
   GrowthTrendRow,
+  InstagramAnalysis,
+  InstagramComment,
+  InstagramTrackedPost,
   PostPerformance,
 } from '@/lib/types';
 import { Alert } from '@/ui/alert';
@@ -1161,6 +1167,315 @@ export default function GrowthPage() {
           )}
         </CardContent>
       </Card>
+
+      <InstagramResearchSection
+        configured={data.instagram_configured}
+        enabled={data.instagram_enabled}
+        canSync={data.can_sync}
+      />
     </div>
+  );
+}
+
+function InstagramResearchSection({
+  configured,
+  enabled,
+  canSync,
+}: {
+  configured: boolean;
+  enabled: boolean;
+  canSync: boolean;
+}) {
+  const qc = useQueryClient();
+  const [url, setUrl] = useState('');
+  const [selected, setSelected] = useState<number | null>(null);
+  const [amount, setAmount] = useState('200');
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['growth', 'instagram'] });
+
+  const posts = useQuery({
+    queryKey: qk.instagramPosts(),
+    queryFn: () =>
+      fetchList<InstagramTrackedPost>('/growth/instagram/posts/', { page_size: 50, ordering: '-created_at' }),
+  });
+  const analysis = useQuery({
+    queryKey: qk.instagramAnalysis(selected ? { post: selected } : undefined),
+    queryFn: () =>
+      fetchOne<InstagramAnalysis>('/growth/instagram/analysis/', selected ? { post: selected } : undefined),
+  });
+  const comments = useQuery({
+    queryKey: qk.instagramComments(selected ? { post: selected } : undefined),
+    queryFn: () =>
+      fetchList<InstagramComment>('/growth/instagram/comments/', {
+        page_size: 25,
+        ...(selected ? { post: selected } : {}),
+      }),
+  });
+
+  const addPost = useMutation({
+    mutationFn: async () =>
+      (await api.post<InstagramTrackedPost>('/growth/instagram/posts/', { url: url.trim() })).data,
+    onSuccess: (post) => {
+      setUrl('');
+      setSelected(post.id);
+      toast.success(`Tracking ${post.shortcode}`);
+      invalidate();
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const scrape = useMutation({
+    mutationFn: async (id: number) =>
+      (
+        await api.post<{ fetched: number; created: number; updated: number }>(
+          `/growth/instagram/posts/${id}/scrape/`,
+          { amount: Number(amount) || undefined },
+        )
+      ).data,
+    onSuccess: (result) => {
+      toast.success(`Fetched ${result.fetched} comments`, {
+        description: `${result.created} new · ${result.updated} updated`,
+      });
+      invalidate();
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: number) => api.delete(`/growth/instagram/posts/${id}/`),
+    onSuccess: () => {
+      setSelected(null);
+      invalidate();
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const testSession = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ ok: boolean; username: string }>('/growth/instagram/test/', {})).data,
+    onSuccess: (result) => toast.success(`Session OK — @${result.username}`),
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const rows = posts.data?.results ?? [];
+  const totals = analysis.data?.totals;
+  const errorPost = rows.find((row) => row.id === selected && row.error);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between space-y-0">
+        <div>
+          <CardTitle>8. Instagram commenters (research)</CardTitle>
+          <CardDescription>
+            Who comments on a public post. Uses a logged-in session cookie — experimental, not
+            official API usage. Configure it in Settings → API keys.
+          </CardDescription>
+        </div>
+        {canSync && configured && enabled && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => testSession.mutate()}
+            disabled={testSession.isPending}
+          >
+            {testSession.isPending ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+            Test session
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!enabled && (
+          <Alert variant="info" title="Instagram research is turned off">
+            Set <code>INSTAGRAM_SCRAPER_ENABLED=True</code> in backend/.env to use this section.
+          </Alert>
+        )}
+
+        {enabled && !configured && (
+          <Alert variant="info" title="Instagram session not configured">
+            Paste a <code>sessionid</code> cookie in Settings → API keys. Likers are not available by
+            any method; this reads commenters only.
+          </Alert>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <Field label="Post URL" hint="A public /p/… or /reel/… link.">
+            <Input
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://www.instagram.com/p/…/"
+              disabled={!enabled}
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button
+              onClick={() => addPost.mutate()}
+              disabled={!enabled || addPost.isPending || url.trim() === ''}
+            >
+              {addPost.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+              Track post
+            </Button>
+          </div>
+        </div>
+
+        {rows.length === 0 ? (
+          <EmptyState title="No posts tracked" description="Paste a public post URL above to start." />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Post</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead className="text-right">Stored</TableHead>
+                  <TableHead className="text-right">Reported</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((post) => (
+                  <TableRow
+                    key={post.id}
+                    className={cn('cursor-pointer', selected === post.id && 'bg-muted/40')}
+                    onClick={() => setSelected(post.id)}
+                  >
+                    <TableCell className="font-medium">{post.shortcode}</TableCell>
+                    <TableCell className="text-muted-foreground">{post.owner_username || '—'}</TableCell>
+                    <TableCell className="text-right">{formatNumber(post.comments_stored)}</TableCell>
+                    <TableCell className="text-right">{formatNumber(post.comment_count)}</TableCell>
+                    <TableCell className={post.status === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
+                      {post.status_label}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {canSync && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              scrape.mutate(post.id);
+                            }}
+                            disabled={!enabled || scrape.isPending}
+                          >
+                            {scrape.isPending && scrape.variables === post.id ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <RefreshCw />
+                            )}
+                            Scrape
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label="Remove post"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            remove.mutate(post.id);
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {rows.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3 border-t border-border pt-4">
+            <Field label="Max comments per scrape" hint="Higher is slower and likelier to be throttled.">
+              <Input
+                className="w-32"
+                inputMode="numeric"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={!enabled}
+              />
+            </Field>
+            <Button variant="outline" onClick={() => downloadCsv('/growth/instagram/export/', selected ? { post: selected } : undefined, 'instagram-comments.csv')}>
+              <Download />
+              Export CSV
+            </Button>
+          </div>
+        )}
+
+        {errorPost && (
+          <Alert variant="destructive" title="Last scrape failed">
+            {errorPost.error}
+          </Alert>
+        )}
+
+        {totals && (
+          <>
+            <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-4">
+              <StatBox label="Comments" value={formatNumber(totals.comments)} />
+              <StatBox label="Commenters" value={formatNumber(totals.commenters)} />
+              <StatBox label="Repeat commenters" value={formatNumber(totals.repeat_commenters)} />
+              <StatBox label="Posts tracked" value={formatNumber(totals.posts)} />
+            </div>
+
+            {(analysis.data?.top_commenters.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Most active commenters
+                </p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Account</TableHead>
+                        <TableHead className="text-right">Comments</TableHead>
+                        <TableHead className="text-right">Posts</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {analysis.data?.top_commenters.map((row) => (
+                        <TableRow key={row.author_username}>
+                          <TableCell className="font-medium">@{row.author_username}</TableCell>
+                          <TableCell className="text-right">{formatNumber(row.comments)}</TableCell>
+                          <TableCell className="text-right">{formatNumber(row.posts)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 border-t border-border pt-4">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Comments {selected ? `· ${rows.find((row) => row.id === selected)?.shortcode ?? ''}` : '· all posts'}
+              </p>
+              {comments.isPending ? (
+                <Skeleton className="h-24" />
+              ) : (comments.data?.results.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nothing stored yet. Press “Scrape”.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {comments.data?.results.map((comment) => (
+                    <li key={comment.id} className="rounded-field bg-surface-alt p-3 text-sm">
+                      <span className="font-semibold">@{comment.author_username}</span>
+                      {comment.like_count > 0 && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {formatNumber(comment.like_count)} likes
+                        </span>
+                      )}
+                      <p className="mt-1 text-muted-foreground">{comment.text || '—'}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

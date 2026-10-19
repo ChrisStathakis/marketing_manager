@@ -6,14 +6,17 @@ its numbers into cards and captions, and a person decides what gets published.
 
 from __future__ import annotations
 
+import csv
 from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.db.models import Count
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,11 +43,28 @@ from .datasource import (
     search_players,
 )
 from .insights import KIND_LABELS, build_insights
+from .instagram import (
+    InstagramError,
+    InstagramNotConfigured,
+    InstagramRateLimited,
+    InstagramSessionInvalid,
+)
+from .instagram_service import PROVIDER as INSTAGRAM_PROVIDER
+from .instagram_service import get_client, mark_failed, resolve_post, sync_post
 from .metrics import METRICS, metric_label
-from .models import GrowthExperiment, PostPerformance, StatCard, TrafficSnapshot
+from .models import (
+    GrowthExperiment,
+    InstagramComment,
+    InstagramTrackedPost,
+    PostPerformance,
+    StatCard,
+    TrafficSnapshot,
+)
 from .planning import build_plan, seed_plan, site_link
 from .serializers import (
     GrowthExperimentSerializer,
+    InstagramCommentSerializer,
+    InstagramTrackedPostSerializer,
     PostPerformanceSerializer,
     StatCardSerializer,
     TrafficSnapshotSerializer,
@@ -61,6 +81,10 @@ def _bad_request(message: str) -> Response:
 
 def _upstream_error(message: str) -> Response:
     return Response({"detail": message}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+def _rate_limited(message: str) -> Response:
+    return Response({"detail": message}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 def _site_url() -> str:
@@ -156,6 +180,8 @@ class GrowthMetaView(APIView):
                 "site_url": _site_url(),
                 "sources": SOURCE_PLATFORMS,
                 "ga4_configured": credential_status(GA4_PROVIDER)["configured"],
+                "instagram_configured": credential_status(INSTAGRAM_PROVIDER)["configured"],
+                "instagram_enabled": _instagram_enabled(),
                 "can_sync": bool(request.user.is_staff),
                 "warning": warning,
             }
@@ -586,3 +612,213 @@ class GrowthTrafficSyncView(APIView):
         payload = result.as_dict()
         payload["last_synced_at"] = timezone.now().isoformat() if stored is not None else None
         return Response(payload)
+
+
+# --------------------------------------------------------------------------- #
+# Instagram audience research (comments on public posts)
+# --------------------------------------------------------------------------- #
+
+
+def _instagram_enabled() -> bool:
+    return bool(getattr(settings, "INSTAGRAM_SCRAPER_ENABLED", True))
+
+
+class InstagramPostViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Tracked public posts. Adding one is offline; scraping needs the session."""
+
+    serializer_class = InstagramTrackedPostSerializer
+    permission_classes = [IsAuthenticated]
+    ordering_fields = ["created_at", "last_scraped_at", "comment_count"]
+
+    def get_queryset(self):
+        return InstagramTrackedPost.objects.annotate(comments_stored=Count("comments"))
+
+    def create(self, request, *args, **kwargs):
+        payload = request.data if isinstance(request.data, dict) else {}
+        url = (payload.get("url") or "").strip()
+        if not url:
+            return _bad_request("url is required.")
+        try:
+            post, created = resolve_post(url)
+        except ValueError as exc:
+            return _bad_request(str(exc))
+        # Re-read through the annotated queryset so the payload always carries
+        # comments_stored, exactly like list/retrieve.
+        post = self.get_queryset().get(pk=post.pk)
+        serializer = self.get_serializer(post)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
+    def scrape(self, request, pk=None):
+        """Fetch comments for one tracked post (staff only)."""
+        if not _instagram_enabled():
+            return _bad_request("Instagram research is disabled (INSTAGRAM_SCRAPER_ENABLED).")
+        post = self.get_object()
+        payload = request.data if isinstance(request.data, dict) else {}
+        raw_amount = payload.get("amount")
+        if raw_amount in (None, ""):
+            amount = None
+        else:
+            try:
+                amount = int(raw_amount)
+            except (TypeError, ValueError):
+                return _bad_request("amount must be an integer.")
+            if amount < 1:
+                return _bad_request("amount must be at least 1.")
+
+        try:
+            result = sync_post(post, amount=amount)
+        except InstagramNotConfigured as exc:
+            return _bad_request(str(exc))
+        except InstagramSessionInvalid as exc:
+            record_sync(INSTAGRAM_PROVIDER, error=str(exc))
+            mark_failed(post, exc)
+            return _bad_request(str(exc))
+        except InstagramRateLimited as exc:
+            record_sync(INSTAGRAM_PROVIDER, error=str(exc))
+            mark_failed(post, exc)
+            return _rate_limited(str(exc))
+        except InstagramError as exc:
+            record_sync(INSTAGRAM_PROVIDER, error=str(exc))
+            mark_failed(post, exc)
+            return _upstream_error(str(exc))
+
+        record_sync(INSTAGRAM_PROVIDER)
+        payload_out = result.as_dict()
+        payload_out["post"] = self.get_serializer(post).data
+        return Response(payload_out)
+
+
+class InstagramCommentListView(ListAPIView):
+    """Stored comments, filterable by post and searchable by author/text."""
+
+    serializer_class = InstagramCommentSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = InstagramComment.objects.select_related("post").all()
+    filterset_fields = ["post", "author_username"]
+    search_fields = ["author_username", "author_full_name", "text"]
+    ordering_fields = ["commented_at", "like_count", "fetched_at"]
+    ordering = ["-commented_at", "-fetched_at"]
+
+
+class InstagramAnalysisView(APIView):
+    """Who keeps showing up: top commenters, repeat commenters, per-post totals."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        params = request.query_params
+        queryset = InstagramComment.objects.all()
+        post_id = _campaign_id(params.get("post"))
+        if post_id:
+            queryset = queryset.filter(post_id=post_id)
+
+        by_author = list(
+            queryset.values("author_username")
+            .annotate(comments=Count("id"), posts=Count("post", distinct=True))
+            .order_by("-comments", "author_username")
+        )
+        repeat = sorted(
+            [row for row in by_author if row["comments"] > 1],
+            key=lambda row: (-row["comments"], row["author_username"]),
+        )
+
+        posts = InstagramTrackedPost.objects.annotate(comments_stored=Count("comments"))
+        if post_id:
+            posts = posts.filter(pk=post_id)
+
+        return Response(
+            {
+                "totals": {
+                    "comments": queryset.count(),
+                    "commenters": len(by_author),
+                    "repeat_commenters": len(repeat),
+                    "posts": posts.count(),
+                },
+                "top_commenters": by_author[:25],
+                "repeat_commenters": repeat[:25],
+                "by_post": [
+                    {
+                        "id": post.id,
+                        "shortcode": post.shortcode,
+                        "owner_username": post.owner_username,
+                        "stored": post.comments_stored,
+                        "reported": post.comment_count,
+                        "last_scraped_at": post.last_scraped_at,
+                    }
+                    for post in posts
+                ],
+            }
+        )
+
+
+class InstagramExportView(APIView):
+    """CSV of the stored comments, honouring the same filters as the list."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        queryset = InstagramComment.objects.select_related("post").all()
+        params = request.query_params
+        post_id = _campaign_id(params.get("post"))
+        if post_id:
+            queryset = queryset.filter(post_id=post_id)
+        if params.get("author_username"):
+            queryset = queryset.filter(author_username=params["author_username"])
+        if params.get("search"):
+            term = params["search"]
+            queryset = queryset.filter(author_username__icontains=term) | queryset.filter(text__icontains=term)
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="instagram-comments.csv"'
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "post_shortcode", "author_username", "author_full_name",
+                "text", "commented_at", "like_count", "child_count", "fetched_at",
+            ]
+        )
+        for comment in queryset.order_by("-commented_at", "-fetched_at")[:10000]:
+            writer.writerow(
+                [
+                    comment.post.shortcode,
+                    comment.author_username,
+                    comment.author_full_name,
+                    comment.text,
+                    comment.commented_at.isoformat() if comment.commented_at else "",
+                    comment.like_count,
+                    comment.child_count,
+                    comment.fetched_at.isoformat() if comment.fetched_at else "",
+                ]
+            )
+        return response
+
+
+class InstagramTestView(APIView):
+    """Validate the stored sessionid and report which account it belongs to."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        if not _instagram_enabled():
+            return _bad_request("Instagram research is disabled (INSTAGRAM_SCRAPER_ENABLED).")
+        try:
+            client = get_client()
+        except InstagramNotConfigured as exc:
+            return _bad_request(str(exc))
+        try:
+            username = client.validate()
+        except InstagramSessionInvalid as exc:
+            record_sync(INSTAGRAM_PROVIDER, error=str(exc))
+            return _bad_request(str(exc))
+        except InstagramError as exc:
+            record_sync(INSTAGRAM_PROVIDER, error=str(exc))
+            return _upstream_error(str(exc))
+        record_sync(INSTAGRAM_PROVIDER)
+        return Response({"ok": True, "username": username})

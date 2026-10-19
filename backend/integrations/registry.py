@@ -114,6 +114,66 @@ INTEGRATIONS = [
             "rotation."
         ),
     },
+    {
+        "id": "instagram",
+        "label": "Instagram (session)",
+        "summary": "Who commented on a public post — audience research",
+        "description": (
+            "Lets the growth studio read the commenters on a **public** Instagram post. "
+            "Instagram stopped serving post data to logged-out requests in 2026, so this uses "
+            "the sessionid cookie from a logged-in account (a burner is fine) to call the "
+            "comments endpoint. This is not official API usage: it can break, and the account "
+            "behind the cookie risks action. Likers are not available by any method."
+        ),
+        "env_var": "INSTAGRAM_SESSIONID",
+        "used_by": [
+            "POST /api/growth/instagram/posts/{id}/scrape/",
+            "POST /api/growth/instagram/test/",
+        ],
+        "where_to_get": "https://www.instagram.com",
+        "fields": [
+            {
+                "name": "sessionid",
+                "label": "sessionid cookie",
+                "secret": True,
+                "min_length": 20,
+                "placeholder": "12345678%3AAbCdEf…",
+                "hint": (
+                    "Log in to Instagram in a browser, open DevTools → Application → Cookies, "
+                    "copy the value of the “sessionid” cookie for instagram.com. It is stored "
+                    "encrypted and never shown again."
+                ),
+            },
+        ],
+        "config_fields": [
+            {
+                "name": "username",
+                "label": "Account username (label only)",
+                "env_var": "INSTAGRAM_USERNAME",
+                "placeholder": "my_burner",
+                "hint": "Only used to label the connection; the sessionid is what authenticates.",
+            },
+            {
+                "name": "proxy",
+                "label": "Proxy URL (optional)",
+                "env_var": "INSTAGRAM_PROXY",
+                "placeholder": "http://user:pass@host:port",
+                "hint": "Route requests through a proxy to avoid rate limits on your own IP.",
+            },
+        ],
+        "steps": [
+            "Log in to Instagram in a browser (use a throwaway account if you prefer).",
+            "Open DevTools → Application → Cookies → https://www.instagram.com and copy the “sessionid” value.",
+            "Paste it here (or set INSTAGRAM_SESSIONID in backend/.env), then use “Test connection”.",
+            "Sessions expire: if requests start failing with 401, log in again and paste a fresh cookie.",
+        ],
+        "security_note": (
+            "The cookie is stored server-side only, encrypted at rest, and never returned by the "
+            "API. It grants full access to the account it belongs to, so treat it like a "
+            "password and use a burner. Experimental feature — it depends on Instagram’s private "
+            "endpoints and may stop working without notice."
+        ),
+    },
 ]
 
 INTEGRATIONS_BY_ID = {item["id"]: item for item in INTEGRATIONS}

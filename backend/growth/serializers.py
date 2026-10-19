@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .metrics import metric_label
-from .models import GrowthExperiment, PostPerformance, StatCard, TrafficSnapshot
+from .models import GrowthExperiment, InstagramComment, InstagramTrackedPost, PostPerformance, StatCard, TrafficSnapshot
 from .sources import platform_for_source
 
 
@@ -77,3 +77,28 @@ class GrowthExperimentSerializer(serializers.ModelSerializer):
         if start and end and end < start:
             raise serializers.ValidationError({"ended_on": "ended_on must be on or after started_on."})
         return attrs
+
+
+class InstagramTrackedPostSerializer(serializers.ModelSerializer):
+    comments_stored = serializers.IntegerField(read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = InstagramTrackedPost
+        fields = [
+            "id", "url", "shortcode", "media_pk", "owner_username", "caption",
+            "comment_count", "comments_stored", "status", "status_label", "error",
+            "last_scraped_at", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class InstagramCommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InstagramComment
+        fields = [
+            "id", "post", "comment_pk", "author_username", "author_pk",
+            "author_full_name", "text", "commented_at", "like_count",
+            "child_count", "fetched_at",
+        ]
+        read_only_fields = fields

@@ -82,6 +82,42 @@ Sync results are recorded on the credential row (`last_synced_at`, `last_sync_er
 in Settings. A key coming purely from `backend/.env` has no row to record against, so those two
 fields stay empty.
 
+## Instagram (`INSTAGRAM_SESSIONID`, `INSTAGRAM_USERNAME`, `INSTAGRAM_PROXY`)
+
+| | |
+| --- | --- |
+| Powers | Who commented on a **public** post (audience research) |
+| Endpoints | `POST /api/growth/instagram/test/`, `POST /api/growth/instagram/posts/{id}/scrape/` |
+| Env fallbacks | `INSTAGRAM_SESSIONID`, `INSTAGRAM_USERNAME`, `INSTAGRAM_PROXY` |
+
+!!! warning "Not official API usage"
+    In 2026 Instagram serves post data **only** to logged-in sessions (anonymous requests get
+    `429` or `401 require_login`), so this reads the comments endpoint with the **`sessionid`
+    cookie** of a logged-in account. It is unofficial: it can break without notice and risks
+    action against that account. **Likers are not available by any method** — this returns
+    commenters only. Treat the cookie like a password and use a throwaway account.
+
+How it works: the shortcode in a post URL is decoded to a media id **locally**, so no profile
+lookup is needed; only the comments endpoint is called, with the cookie.
+
+Steps:
+
+1. Log in to Instagram in a browser — a **burner** account is recommended.
+2. DevTools → **Application → Cookies → `https://www.instagram.com`**, copy the **`sessionid`** value.
+3. In Settings → API keys, paste it (or set `INSTAGRAM_SESSIONID` in `backend/.env`), then use
+   **Test connection** — it reports which account the cookie belongs to.
+4. Optionally set a **proxy** to avoid rate limits on your own IP.
+
+Caveats:
+
+- Cookies expire: a `401` means log in again and paste a fresh one.
+- Keep the feature behind `INSTAGRAM_SCRAPER_ENABLED` (set it to `False` to turn the section
+  off); `INSTAGRAM_MAX_COMMENTS` caps how many comments one scrape pulls, and
+  `INSTAGRAM_TIMEOUT` / `INSTAGRAM_API_BASE` override the rest.
+- Commenter usernames are **personal data**. Only collect what you need, keep it no longer than
+  necessary, and do not use it for unsolicited outreach.
+- CLI equivalent: `manage.py instagram_check [--url …] [--limit N]`.
+
 ## API
 
 See `docs/api-reference.md` → Integrations.

@@ -7,3 +7,4 @@ python-dotenv>=1.0
 dj-database-url>=2.1
 cryptography>=42
 Pillow>=10.1
+curl_cffi>=0.7

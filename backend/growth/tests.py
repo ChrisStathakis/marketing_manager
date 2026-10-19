@@ -26,8 +26,25 @@ from growth.cards import SIZES, render_card
 from growth.captions import build_captions
 from growth.datasource import CACHE_VERSION, CatchAndStatsClient, DatasourceError, cache_dir, priority_country, _write_cache
 from growth.insights import build_insights
+from growth.instagram import (
+    FetchedComment,
+    InstagramClient,
+    InstagramNotConfigured,
+    InstagramRateLimited,
+    InstagramSessionInvalid,
+    media_pk_from_shortcode,
+    shortcode_from_url,
+)
+from growth.instagram_service import CommentSyncResult, sync_post
 from growth.metrics import format_metric
-from growth.models import GrowthExperiment, PostPerformance, StatCard, TrafficSnapshot
+from growth.models import (
+    GrowthExperiment,
+    InstagramComment,
+    InstagramTrackedPost,
+    PostPerformance,
+    StatCard,
+    TrafficSnapshot,
+)
 from growth.planning import site_link
 from growth.sources import platform_for_source
 from growth.traffic import TrafficResult, sync_organic
@@ -813,3 +830,324 @@ class DatasourceHardeningTests(SimpleTestCase):
             with self.assertRaises(DatasourceError) as caught:
                 client.season_table("E2026")
         self.assertIn("no players", str(caught.exception))
+
+
+class _FakeResponse:
+    """Minimal stand-in for a curl_cffi response in client unit tests."""
+
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+
+    def json(self):
+        return self._payload
+
+
+class _FakeInstagramClient:
+    """A stand-in InstagramClient for service tests; records what it was asked for."""
+
+    def __init__(self, comments, reported=None):
+        self._comments = list(comments)
+        self._reported = reported
+        self.calls: list[tuple] = []
+
+    def comments(self, media_pk, amount=None):
+        self.calls.append(("comments", media_pk, amount))
+        return self._comments[:amount] if amount else list(self._comments)
+
+    def comment_count(self, media_pk):
+        self.calls.append(("count", media_pk, None))
+        return self._reported
+
+
+class InstagramClientTests(SimpleTestCase):
+    """The client's parsing and loop guards, exercised without touching the network."""
+
+    def _client(self, **kwargs):
+        return InstagramClient("sessionid-value-1234567890", **kwargs)
+
+    @mock.patch("growth.instagram.time.sleep")
+    def test_comments_paginate_with_min_id_and_dedupe(self, _sleep):
+        pages = [
+            {
+                "comments": [{"pk": "1", "user": {"username": "a"}, "text": "one"}],
+                "has_more_comments": True,
+                "next_max_id": "CUR1",
+            },
+            {
+                "comments": [
+                    {"pk": "1", "user": {"username": "a"}, "text": "one"},
+                    {"pk": "2", "user": {"username": "b"}, "text": "two"},
+                ],
+                "has_more_comments": False,
+            },
+        ]
+        calls: list[dict] = []
+
+        def fake_get(path, params=None):
+            calls.append(params or {})
+            return _FakeResponse(200, pages[len(calls) - 1])
+
+        with mock.patch.object(InstagramClient, "_get", side_effect=fake_get):
+            comments = self._client().comments(123)
+        self.assertEqual([comment.pk for comment in comments], ["1", "2"])
+        self.assertNotIn("min_id", calls[0])
+        self.assertEqual(calls[1]["min_id"], "CUR1")
+
+    @mock.patch("growth.instagram.time.sleep")
+    def test_comments_stop_when_a_page_adds_nothing(self, _sleep):
+        page = {
+            "comments": [{"pk": "1", "user": {"username": "a"}}],
+            "has_more_comments": True,
+            "next_max_id": "SAME",
+        }
+        with mock.patch.object(InstagramClient, "_get", return_value=_FakeResponse(200, page)):
+            comments = self._client().comments(123)
+        self.assertEqual(len(comments), 1)
+
+    def test_comments_cap_at_amount(self):
+        page = {
+            "comments": [{"pk": str(index), "user": {"username": "a"}} for index in range(5)],
+            "has_more_comments": False,
+        }
+        with mock.patch.object(InstagramClient, "_get", return_value=_FakeResponse(200, page)):
+            comments = self._client().comments(123, amount=2)
+        self.assertEqual(len(comments), 2)
+
+    def test_validate_falls_back_to_a_profile_read(self):
+        def fake_get(path, params=None):
+            if "current_user" in path:
+                return _FakeResponse(400, {})
+            return _FakeResponse(200, {"data": {"user": {"username": "burner"}}})
+
+        with mock.patch.object(InstagramClient, "_get", side_effect=fake_get):
+            self.assertEqual(self._client().validate(), "burner")
+
+    def test_validate_uses_current_user_when_available(self):
+        with mock.patch.object(
+            InstagramClient,
+            "_get",
+            return_value=_FakeResponse(200, {"user": {"username": "me"}}),
+        ):
+            self.assertEqual(self._client().validate(), "me")
+
+    def test_missing_sessionid_is_not_configured(self):
+        with self.assertRaises(InstagramNotConfigured):
+            InstagramClient("")
+
+
+class InstagramCodecTests(SimpleTestCase):
+    """Shortcode ↔ media id is offline maths, so it must be exactly right."""
+
+    def test_known_shortcode_decodes_to_its_media_id(self):
+        # Taken from a real post's embed payload.
+        self.assertEqual(media_pk_from_shortcode("DWr6G6QkpiS"), 3867440266597275794)
+
+    def test_bad_shortcode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            media_pk_from_shortcode("has spaces!")
+
+    def test_shortcode_from_url_handles_posts_and_reels(self):
+        self.assertEqual(shortcode_from_url("https://www.instagram.com/p/DWr6G6QkpiS/"), "DWr6G6QkpiS")
+        self.assertEqual(
+            shortcode_from_url("https://www.instagram.com/reel/ABC123_-/?utm_source=ig_web"),
+            "ABC123_-",
+        )
+
+    def test_non_post_url_is_rejected(self):
+        with self.assertRaises(ValueError):
+            shortcode_from_url("https://www.instagram.com/nasa/")
+
+
+class InstagramResearchTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        user_model = get_user_model()
+        cls.admin = user_model.objects.create_user(username="ig-admin", password="x", is_staff=True)
+        cls.user = user_model.objects.create_user(username="ig-user", password="x")
+
+    def _tracked_post(self, shortcode="DWr6G6QkpiS"):
+        return InstagramTrackedPost.objects.create(
+            url=f"https://www.instagram.com/p/{shortcode}/",
+            shortcode=shortcode,
+            media_pk=media_pk_from_shortcode(shortcode),
+        )
+
+    def test_sync_post_upserts_comments_and_records_the_reported_total(self):
+        post = self._tracked_post()
+        comment = FetchedComment(
+            pk="c1", author_username="alice", author_full_name="Alice", text="hi", created_at_utc=1700000000
+        )
+        fake = _FakeInstagramClient([comment], reported=100)
+
+        first = sync_post(post, client=fake)
+        self.assertEqual((first.fetched, first.created, first.updated, first.total_seen), (1, 1, 0, 100))
+
+        second = sync_post(post, client=fake)
+        self.assertEqual((second.fetched, second.created, second.updated), (1, 0, 1))
+
+        post.refresh_from_db()
+        self.assertEqual(post.status, "ok")
+        self.assertEqual(post.comment_count, 100)
+        self.assertEqual(post.comments.count(), 1)
+        stored = post.comments.get()
+        self.assertEqual(stored.author_username, "alice")
+        self.assertIsNotNone(stored.commented_at)
+
+    def test_sync_post_without_a_reported_total_falls_back_to_fetched(self):
+        post = self._tracked_post()
+        fake = _FakeInstagramClient([FetchedComment(pk="c1", author_username="bob")])
+        sync_post(post, client=fake)
+        post.refresh_from_db()
+        self.assertEqual(post.comment_count, 1)
+
+    def test_sync_post_honours_the_amount_cap(self):
+        post = self._tracked_post()
+        many = [FetchedComment(pk=str(index), author_username=f"u{index}") for index in range(5)]
+        fake = _FakeInstagramClient(many)
+        result = sync_post(post, amount=2, client=fake)
+        self.assertEqual(result.fetched, 2)
+        self.assertEqual(post.comments.count(), 2)
+
+    def test_adding_a_post_stores_the_media_id_without_network(self):
+        self.client.force_authenticate(user=self.user)
+        with mock.patch("growth.instagram_service.get_client") as client:
+            response = self.client.post(
+                "/api/growth/instagram/posts/",
+                {"url": "https://www.instagram.com/p/DWr6G6QkpiS/"},
+                format="json",
+            )
+        client.assert_not_called()
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["comments_stored"], 0)
+        post = InstagramTrackedPost.objects.get(shortcode="DWr6G6QkpiS")
+        self.assertEqual(post.media_pk, 3867440266597275794)
+
+    def test_adding_the_same_post_twice_is_not_a_duplicate(self):
+        self.client.force_authenticate(user=self.user)
+        payload = {"url": "https://www.instagram.com/p/DWr6G6QkpiS/"}
+        first = self.client.post("/api/growth/instagram/posts/", payload, format="json")
+        second = self.client.post("/api/growth/instagram/posts/", payload, format="json")
+        self.assertEqual((first.status_code, second.status_code), (201, 200))
+        self.assertEqual(InstagramTrackedPost.objects.count(), 1)
+
+    def test_bad_url_is_rejected(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/growth/instagram/posts/", {"url": "https://example.com/x"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_is_staff_only(self, mock_sync):
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 403)
+        mock_sync.assert_not_called()
+
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_reports_counts(self, mock_sync):
+        mock_sync.return_value = CommentSyncResult(fetched=5, created=3, updated=2)
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["created"], 3)
+        self.assertEqual(response.json()["post"]["shortcode"], "DWr6G6QkpiS")
+
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_maps_a_dead_session_to_400(self, mock_sync):
+        mock_sync.side_effect = InstagramSessionInvalid("expired")
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        post.refresh_from_db()
+        self.assertEqual(post.status, "error")
+
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_maps_rate_limit_to_429(self, mock_sync):
+        mock_sync.side_effect = InstagramRateLimited("slow down")
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 429)
+
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_without_a_session_is_400(self, mock_sync):
+        mock_sync.side_effect = InstagramNotConfigured("no sessionid")
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    @override_settings(INSTAGRAM_SCRAPER_ENABLED=False)
+    @mock.patch("growth.views.sync_post")
+    def test_scrape_is_blocked_when_disabled(self, mock_sync):
+        post = self._tracked_post()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/growth/instagram/posts/{post.id}/scrape/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        mock_sync.assert_not_called()
+
+    @mock.patch("growth.views.get_client")
+    def test_test_endpoint_reports_the_account(self, mock_get_client):
+        mock_get_client.return_value.validate.return_value = "burner_account"
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post("/api/growth/instagram/test/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["username"], "burner_account")
+
+    def test_test_endpoint_is_staff_only(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post("/api/growth/instagram/test/", {}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_analysis_counts_top_and_repeat_commenters(self):
+        first = self._tracked_post("DWr6G6QkpiS")
+        second = self._tracked_post("DWr6HGjkvoi")
+        for index in range(3):
+            InstagramComment.objects.create(
+                post=first, comment_pk=f"a{index}", author_username="alice", text="hi"
+            )
+        InstagramComment.objects.create(post=second, comment_pk="a9", author_username="alice", text="again")
+        InstagramComment.objects.create(post=first, comment_pk="b1", author_username="bob", text="yo")
+
+        self.client.force_authenticate(user=self.user)
+        body = self.client.get("/api/growth/instagram/analysis/").json()
+        self.assertEqual(body["totals"]["comments"], 5)
+        self.assertEqual(body["totals"]["commenters"], 2)
+        self.assertEqual(body["totals"]["repeat_commenters"], 1)
+        self.assertEqual(body["top_commenters"][0]["author_username"], "alice")
+        self.assertEqual(body["top_commenters"][0]["posts"], 2)
+
+    def test_comments_endpoint_filters_by_post(self):
+        first = self._tracked_post("DWr6G6QkpiS")
+        second = self._tracked_post("DWr6HGjkvoi")
+        InstagramComment.objects.create(post=first, comment_pk="1", author_username="alice", text="a")
+        InstagramComment.objects.create(post=second, comment_pk="2", author_username="bob", text="b")
+
+        self.client.force_authenticate(user=self.user)
+        body = self.client.get(f"/api/growth/instagram/comments/?post={first.id}").json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["results"][0]["author_username"], "alice")
+
+    def test_export_returns_csv(self):
+        post = self._tracked_post()
+        InstagramComment.objects.create(
+            post=post, comment_pk="1", author_username="alice", text="nice, \"quoted\""
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/growth/instagram/export/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertIn("alice", response.content.decode())
+        self.assertIn("author_username", response.content.decode())
+
+    def test_meta_reports_instagram_configuration(self):
+        self.client.force_authenticate(user=self.user)
+        # Avoid the real season fetch; the meta view tolerates a datasource error.
+        with mock.patch("growth.views._seasons", return_value=([], "")):
+            body = self.client.get("/api/growth/meta/").json()
+        self.assertIn("instagram_configured", body)

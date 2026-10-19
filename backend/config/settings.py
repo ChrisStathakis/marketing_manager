@@ -104,6 +104,15 @@ MEDIA_ROOT = BASE_DIR / "media"
 CATCHANDSTATS_SITE_URL = os.environ.get("CATCHANDSTATS_SITE_URL", "https://catchandstats.com")
 CATCHANDSTATS_API_BASE = os.environ.get("CATCHANDSTATS_API_BASE", "https://catchandstats.com/api")
 
+# Instagram audience research (comments on public posts). Off by default unless a
+# sessionid is stored: it uses Instagram's private endpoints with a logged-in
+# cookie, which is not official API usage. See docs/guides/… .
+INSTAGRAM_SCRAPER_ENABLED = os.environ.get("INSTAGRAM_SCRAPER_ENABLED", "True").lower() in ("1", "true", "yes")
+INSTAGRAM_API_BASE = os.environ.get("INSTAGRAM_API_BASE", "https://www.instagram.com")
+INSTAGRAM_TIMEOUT = int(os.environ.get("INSTAGRAM_TIMEOUT", "20"))
+INSTAGRAM_MAX_COMMENTS = int(os.environ.get("INSTAGRAM_MAX_COMMENTS", "500"))
+INSTAGRAM_PROXY = os.environ.get("INSTAGRAM_PROXY") or None
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # DRF
