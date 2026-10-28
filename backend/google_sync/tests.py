@@ -28,7 +28,7 @@ from integrations.models import IntegrationCredential
 from integrations.services import set_credential
 from results.models import DailyMetric
 
-from . import ga4
+from . import ga4, search_console
 from .services import DEFAULT_WINDOW_DAYS, SyncNotConfigured, resolve_window, sync_ga4
 
 SYNC_URL = "/api/integrations/google-analytics/sync/"
@@ -165,6 +165,18 @@ class AccessTokenTests(APITestCase):
         self.assertEqual(claims["scope"], "https://www.googleapis.com/auth/analytics.readonly")
         self.assertEqual(claims["exp"] - claims["iat"], 3600)
 
+    def test_jwt_accepts_search_console_scopes(self):
+        info, _ = make_service_account()
+        token = ga4.signed_jwt(
+            info,
+            "https://oauth2.googleapis.com/token",
+            now=1_000,
+            scopes=search_console.SCOPES,
+        )
+        _, claims_b64, _ = token.split(".")
+        claims = json.loads(base64.urlsafe_b64decode(claims_b64 + "=" * (-len(claims_b64) % 4)))
+        self.assertEqual(claims["scope"], "https://www.googleapis.com/auth/webmasters.readonly")
+
     def test_access_token_exchanges_the_jwt(self):
         captured = {}
 
@@ -211,6 +223,100 @@ class AccessTokenTests(APITestCase):
                 ga4._access_token(service_account_json())
         self.assertIn("400", str(ctx.exception))
         self.assertIn("invalid_grant", str(ctx.exception))
+
+
+class SearchConsoleClientTests(APITestCase):
+    def test_normalizes_pages_for_campaign_matching(self):
+        self.assertEqual(
+            search_console.normalize_page_path("https://www.catchandstats.com/team/?utm_source=x"),
+            "/team",
+        )
+        self.assertEqual(search_console.normalize_page_path("https://catchandstats.com"), "/")
+        self.assertEqual(
+            search_console.normalize_page_path("https://catchandstats.com/a/b/"),
+            "/a/b",
+        )
+
+    def test_parses_totals_pages_and_queries(self):
+        payload = {
+            "rows": [
+                {
+                    "keys": ["2026-10-10"],
+                    "clicks": 12,
+                    "impressions": 300,
+                    "ctr": 0.04,
+                    "position": 4.2,
+                }
+            ]
+        }
+        total = search_console.parse_rows(payload, "total")[0]
+        self.assertEqual(total["date"], date(2026, 10, 10))
+        self.assertEqual(total["clicks"], 12)
+        self.assertEqual(total["page_path"], "")
+
+        page = search_console.parse_rows(
+            {
+                "rows": [
+                    {
+                        "keys": ["2026-10-10", "https://catchandstats.com/team/?utm_source=x"],
+                        "clicks": "7",
+                        "impressions": "90",
+                        "ctr": "0.0778",
+                        "position": "2.5",
+                    }
+                ]
+            },
+            "page",
+        )[0]
+        self.assertEqual(page["page_path"], "/team")
+        self.assertEqual(page["page_url"], "https://catchandstats.com/team/?utm_source=x")
+
+        query = search_console.parse_rows(
+            {"rows": [{"keys": ["2026-10-10", "euroleague top 8"], "clicks": 1}]},
+            "query",
+        )[0]
+        self.assertEqual(query["query"], "euroleague top 8")
+        self.assertEqual(query["impressions"], 0)
+
+    def test_query_encodes_the_property_and_posts_dimensions(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data.decode())
+            return FakeHTTPResponse({"rows": []})
+
+        with mock.patch.object(search_console, "_access", return_value="token"):
+            with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                search_console.query(
+                    "{}",
+                    "sc-domain:catchandstats.com",
+                    date(2026, 10, 1),
+                    date(2026, 10, 10),
+                    ["date", "page"],
+                )
+
+        self.assertIn("sc-domain%3Acatchandstats.com", captured["url"])
+        self.assertTrue(captured["url"].endswith("/searchAnalytics/query"))
+        self.assertEqual(captured["body"]["startDate"], "2026-10-01")
+        self.assertEqual(captured["body"]["endDate"], "2026-10-10")
+        self.assertEqual(captured["body"]["dimensions"], ["date", "page"])
+        self.assertEqual(captured["body"]["dataState"], "all")
+
+    def test_fetch_snapshot_asks_for_totals_pages_and_queries(self):
+        calls = []
+
+        def fake_rows(credentials, site_url, start, end, dimensions, **kwargs):
+            calls.append(dimensions)
+            return []
+
+        with mock.patch.object(search_console, "_fetch_rows", side_effect=fake_rows):
+            rows = search_console.fetch_snapshot(
+                "{}", "sc-domain:catchandstats.com", date(2026, 10, 1), date(2026, 10, 10)
+            )
+
+        self.assertEqual(rows, [])
+        self.assertEqual(calls, [["date"], ["date", "page"], ["date", "query"]])
 
 
 class ResolveWindowTests(APITestCase):

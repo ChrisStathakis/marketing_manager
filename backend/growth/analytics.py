@@ -12,18 +12,29 @@ from .sources import platform_for_source
 
 
 def group_stats(rows: list) -> dict:
-    """Impressions/engagements/clicks rolled up, with both rates."""
+    """Impressions/engagements/clicks rolled up, with the plan's KPI fields."""
     impressions = sum(row.impressions for row in rows)
     engagements = sum(row.engagements for row in rows)
     clicks = sum(row.clicks for row in rows)
+    saves = sum(getattr(row, "saves", 0) or 0 for row in rows)
+    shares = sum(getattr(row, "shares", 0) or 0 for row in rows)
+    ratios = [row.upvote_ratio for row in rows if getattr(row, "upvote_ratio", None) is not None]
     return {
         "posts": len(rows),
         "impressions": impressions,
+        "reach": sum(getattr(row, "reach", 0) or 0 for row in rows),
         "engagements": engagements,
+        "saves": saves,
+        "shares": shares,
         "comments": sum(row.comments for row in rows),
+        "profile_visits": sum(getattr(row, "profile_visits", 0) or 0 for row in rows),
         "clicks": clicks,
+        "signups": sum(getattr(row, "signups", 0) or 0 for row in rows),
+        "upvote_ratio": round(sum(ratios) / len(ratios), 4) if ratios else None,
         "engagement_rate": round(engagements / impressions, 4) if impressions else None,
         "click_rate": round(clicks / impressions, 4) if impressions else None,
+        "save_rate": round(saves / impressions, 4) if impressions else None,
+        "share_rate": round(shares / impressions, 4) if impressions else None,
     }
 
 
@@ -103,6 +114,8 @@ def traffic_summary(snapshots: list, labels: dict | None = None) -> dict:
     totals = {"sessions": 0, "social_sessions": 0, "engaged_sessions": 0, "users": 0, "views": 0}
     by_platform: dict[str, dict] = {}
     by_source: dict[tuple, dict] = {}
+    by_campaign: dict[tuple, dict] = {}
+    by_content: dict[tuple, dict] = {}
 
     for row in snapshots:
         totals["sessions"] += row.sessions
@@ -120,6 +133,23 @@ def traffic_summary(snapshots: list, labels: dict | None = None) -> dict:
         )
         entry["sessions"] += row.sessions
         entry["engaged_sessions"] += row.engaged_sessions
+
+        campaign = (getattr(row, "campaign", "") or "").strip()
+        if campaign:
+            bucket = by_campaign.setdefault(
+                (campaign, row.source),
+                {"campaign": campaign, "source": row.source, "sessions": 0, "engaged_sessions": 0},
+            )
+            bucket["sessions"] += row.sessions
+            bucket["engaged_sessions"] += row.engaged_sessions
+        content = (getattr(row, "content", "") or "").strip()
+        if content:
+            bucket = by_content.setdefault(
+                (content, row.source),
+                {"content": content, "source": row.source, "sessions": 0, "engaged_sessions": 0},
+            )
+            bucket["sessions"] += row.sessions
+            bucket["engaged_sessions"] += row.engaged_sessions
 
         if not platform:
             continue
@@ -148,8 +178,16 @@ def traffic_summary(snapshots: list, labels: dict | None = None) -> dict:
         entry["engagement_rate"] = (
             round(entry["engaged_sessions"] / entry["sessions"], 4) if entry["sessions"] else None
         )
+    campaigns = sorted(by_campaign.values(), key=lambda entry: entry["sessions"], reverse=True)
+    contents = sorted(by_content.values(), key=lambda entry: entry["sessions"], reverse=True)
+    for entry in campaigns + contents:
+        entry["engagement_rate"] = (
+            round(entry["engaged_sessions"] / entry["sessions"], 4) if entry["sessions"] else None
+        )
     return {
         "totals": totals,
         "by_platform": grouped,
         "by_source": sources[:15],
+        "by_campaign": campaigns[:20],
+        "by_content": contents[:20],
     }

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from integrations.services import record_sync
 
-from . import ga4
+from . import ga4, search_console
 from .services import MAX_WINDOW_DAYS, PROVIDER, SyncNotConfigured, sync_ga4
 
 
@@ -47,6 +47,36 @@ def sync_google_analytics(request):
         return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
     stored = record_sync(PROVIDER)
+    return Response(
+        {
+            **result.as_dict(),
+            "last_synced_at": timezone.now().isoformat() if stored else None,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def sync_google_search_console(request):
+    """Pull Google organic search totals, pages and queries into snapshots."""
+    days, error = _requested_days(request)
+    if error:
+        return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Imported lazily: the service writes growth models, while this app is
+    # deliberately independent of the report layer.
+    from growth.search_console import PROVIDER as GSC_PROVIDER
+    from growth.search_console import sync_search_console
+
+    try:
+        result = sync_search_console(days=days)
+    except SyncNotConfigured as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    except search_console.SearchConsoleError as exc:
+        record_sync(GSC_PROVIDER, error=str(exc))
+        return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    stored = record_sync(GSC_PROVIDER)
     return Response(
         {
             **result.as_dict(),

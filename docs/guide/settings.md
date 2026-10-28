@@ -57,7 +57,8 @@ console, so you do not have to remember where the keys come from.
 | --- | --- | --- |
 | **OpenAI** | **Generate AI** suggestions on a campaign. | AI suggestions are unavailable; rule suggestions still work. |
 | **Google Analytics 4** | Automatic revenue and orders in [Results](results.md) via **Sync now**. | You import results by CSV instead. |
-| **Instagram** | The [growth studio](growth.md#instagram-comment-research) can read who commented on a public post. | Section 8 of the growth studio stays empty and tells you to configure it. |
+| **Google Search Console** | Assisted Google organic-search clicks, impressions, pages and queries in [Growth studio](growth.md#google-organic-search-assisted). | Section 7 of the growth studio stays empty and tells you to configure it. |
+| **Instagram** | The [growth studio](growth.md#instagram-comment-research) can read who commented on a public post. | Section 9 of the growth studio stays empty and tells you to configure it. |
 
 !!! warning "Instagram is unofficial"
     It is the one service here that is **not** an official API: it uses the `sessionid` cookie of
@@ -79,6 +80,25 @@ After that, the card shows **Configured** and *last synced …*. Press **Sync no
 want fresh numbers — it is safe to run as often as you like, because it updates rather than
 duplicates.
 
+### Setting up Google Search Console
+
+Search Console uses the same service-account authentication as GA4 (the
+`webmasters.readonly` scope), so the same JSON key can be reused:
+
+1. In Google Cloud, enable the **Google Search Console API** for the project.
+2. In Search Console, add the service-account `client_email` as a user of the property
+   (**Settings -> Users and permissions**). Read access is enough.
+3. In the app: **Settings -> API keys -> Google Search Console -> Set up**, paste the JSON and
+   the **exact property string** (`sc-domain:catchandstats.com` for a Domain property, or
+   `https://www.catchandstats.com/` for a URL-prefix property), then **Save**.
+4. Press **Sync now** in Settings, **Sync Search Console** in the growth studio, or run
+   `python manage.py sync_google --search-console-only` on the server.
+
+Search Console has no UTM dimension. The growth report joins its pages to the campaign's
+content links and labels the result **assisted search**; it is not causal attribution. Set a
+landing path on a campaign or playbook so its links target a real page instead of `/`. Google
+typically delays Search Console data by 2-3 days.
+
 !!! note "Only staff accounts can change keys"
     The values are stored server-side, encrypted, and are never shown again after saving — the
     box is write-only. Other users can see whether a key is set, but saving is restricted to
@@ -99,7 +119,7 @@ after the credential was saved. Remove the credential and save it again.
 3. In the app: **Settings → API keys → Instagram → Set up**, paste it, and **Save**.
 4. Press **Test connection** — it reports which account the cookie belongs to.
 
-Then open [Growth studio](growth.md#instagram-comment-research), section 8. Sessions expire: if a
+Then open [Growth studio](growth.md#instagram-comment-research), section 9. Sessions expire: if a
 scrape starts failing, log in again and paste a fresh cookie.
 
 ## Basket shop integration

@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle2, Circle, Download, FileText, Lightbulb, ListTodo, Pause, Pencil, Play, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, Copy, Download, FileText, Lightbulb, ListTodo, Pause, Pencil, Play, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -41,6 +41,21 @@ export default function CampaignDetailPage() {
     queryKey: qk.campaign(campaignId),
     queryFn: () => fetchOne<Campaign>(`/campaigns/${campaignId}/`),
     enabled: valid,
+  });
+
+  const duplicate = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<Campaign>(`/campaigns/${campaignId}/duplicate/`, {
+          start_date: campaign.data?.start_date || toDateInputValue(new Date()),
+        })
+      ).data,
+    onSuccess: (clone) => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      toast.success(`Copied to "${clone.name}"`);
+      navigate(`/campaigns/${clone.id}`);
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   const setStatus = useMutation({
@@ -93,10 +108,28 @@ export default function CampaignDetailPage() {
             Budget {formatCurrency(c.budget)}
             <span className="mx-1.5">·</span>
             {formatDate(c.start_date)} → {formatDate(c.end_date)}
+            {c.round_label && (
+              <>
+                <span className="mx-1.5">·</span>
+                <span>{c.round_label}</span>
+              </>
+            )}
+            {c.playbook_name && (
+              <>
+                <span className="mx-1.5">·</span>
+                <span>{c.playbook_name}</span>
+              </>
+            )}
             {c.utm_campaign && (
               <>
                 <span className="mx-1.5">·</span>
                 <span className="font-mono text-xs">utm_campaign={c.utm_campaign}</span>
+              </>
+            )}
+            {c.landing_path && (
+              <>
+                <span className="mx-1.5">/</span>
+                <span className="font-mono text-xs">landing_path={c.landing_path}</span>
               </>
             )}
           </p>
@@ -112,6 +145,9 @@ export default function CampaignDetailPage() {
               <Play /> Activate
             </Button>
           )}
+          <Button variant="outline" onClick={() => duplicate.mutate()} disabled={duplicate.isPending}>
+            <Copy /> Duplicate
+          </Button>
           <Button variant="outline" onClick={() => setEditOpen(true)}>
             <Pencil /> Edit
           </Button>

@@ -40,6 +40,9 @@ KIND_LABELS = {
     "metric": "Metric of the day",
     "round_recap": "Round recap",
     "matchup": "Matchup",
+    "team": "Team check",
+    "team_delta": "Team delta",
+    "top8": "Top 8",
 }
 
 _FONT_FILES = {
@@ -171,6 +174,8 @@ def render_card(spec: dict, fmt: str = "x") -> bytes:
     """Render a spec dict to PNG bytes."""
     width, height = SIZES.get(fmt, SIZES["x"])
     accent = _rgb(spec.get("accent") or "#34d399")
+    if spec.get("layout") == "table":
+        return _render_table(spec, width, height, accent)
     image = _background(width, height, accent)
     draw = ImageDraw.Draw(image)
 
@@ -320,6 +325,106 @@ def render_card(spec: dict, fmt: str = "x") -> bytes:
     footer_y = height - pad - footer_h
     dot = int(8 * scale)
     draw.ellipse((pad, footer_y + int(footer_h * 0.42), pad + dot, footer_y + int(footer_h * 0.42) + dot), fill=accent)
+    draw.text((pad + int(18 * scale), footer_y), footer, font=f_footer, fill=DIM)
+
+    buffer = io.BytesIO()
+    image.convert("RGB").save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
+def _render_table(spec: dict, width: int, height: int, accent: tuple[int, int, int]) -> bytes:
+    """Eight-row league table: rank, team, record, rating.
+
+    The default row layout is label → value, which cannot carry three columns.
+    This layout deliberately gives the team name the space and right-aligns the
+    two numbers, so the card still reads at Instagram feed size.
+    """
+    image = _background(width, height, accent)
+    draw = ImageDraw.Draw(image)
+
+    scale = min(width / 1600, height / 900)
+    pad = int(width * 0.055)
+    content_width = width - pad * 2
+    f_eyebrow = _font(max(13, int(18 * scale)), bold=True)
+    f_brand = _font(max(12, int(18 * scale)))
+    f_title = _font(max(30, int(58 * scale)), bold=True)
+    f_subtitle = _font(max(14, int(24 * scale)))
+    f_head = _font(max(13, int(20 * scale)), bold=True)
+    f_team = _font(max(15, int(31 * scale)), bold=True)
+    f_cell = _font(max(13, int(25 * scale)))
+    f_footer = _font(max(12, int(18 * scale)))
+
+    gap = int(18 * scale)
+    small_gap = int(8 * scale)
+    footer_h = _advance(f_footer)
+    y = pad
+
+    eyebrow = (spec.get("eyebrow") or "Top 8").upper()
+    draw.rectangle((pad, y + int(4 * scale), pad + int(32 * scale), y + int(8 * scale)), fill=accent)
+    _spaced(draw, (pad + int(44 * scale), y), eyebrow, f_eyebrow, accent, max(1.0, 2.0 * scale))
+    brand = "catchandstats.com"
+    draw.text((width - pad - _text_width(draw, brand, f_brand), y), brand, font=f_brand, fill=DIM)
+    y += _advance(f_eyebrow) + gap
+
+    title_lines = _wrap(draw, spec.get("title", ""), f_title, content_width, max_lines=2)
+    for line in title_lines:
+        draw.text((pad, y), line, font=f_title, fill=INK)
+        y += _advance(f_title)
+    subtitle = _truncate(draw, spec.get("subtitle", ""), f_subtitle, content_width)
+    if subtitle:
+        draw.text((pad, y), subtitle, font=f_subtitle, fill=MUTED)
+        y += int(_advance(f_subtitle) * 0.9)
+
+    y += gap
+    draw.line(((pad, y), (width - pad, y)), fill=LINE, width=max(1, int(1.5 * scale)))
+    draw.line(((pad, y), (pad + int(80 * scale), y)), fill=accent, width=max(2, int(3 * scale)))
+    y += max(2, int(3 * scale)) + gap
+
+    rows = list(spec.get("rows") or [])[:10]
+    header_h = _advance(f_head) + small_gap
+    footer_y = height - pad - footer_h
+    bottom = footer_y - gap
+    row_h = min(int(92 * scale), max(int(44 * scale), int((bottom - y - header_h) / max(len(rows), 1))))
+
+    # Column edges: rank 8%, team 48%, record 18%, net 26%.
+    x_rank = pad
+    x_team = pad + int(content_width * 0.085)
+    x_record = pad + int(content_width * 0.735)
+    x_net = width - pad
+    team_width = x_record - x_team - int(12 * scale)
+
+    for label, x, align, font in (
+        ("#", x_rank, "left", f_head),
+        ("TEAM", x_team, "left", f_head),
+        ("REC", x_record, "right", f_head),
+        ("NET", x_net, "right", f_head),
+    ):
+        text_width = _text_width(draw, label, font)
+        draw.text((x - text_width if align == "right" else x, y), label, font=font, fill=DIM)
+    y += header_h
+
+    if not rows:
+        draw.text((pad, y + int(8 * scale)), "No completed games yet.", font=f_cell, fill=MUTED)
+    for index, row in enumerate(rows):
+        if index:
+            draw.line(((pad, y), (width - pad, y)), fill=LINE, width=1)
+        centre = y + max(0, (row_h - _advance(f_team)) // 2)
+        rank = str(row.get("rank") or index + 1)
+        draw.text((x_rank, centre), rank, font=f_team, fill=accent if index == 0 else INK)
+        team = _truncate(draw, row.get("team") or row.get("label") or "", f_team, team_width)
+        draw.text((x_team, centre), team, font=f_team, fill=INK)
+        record = _truncate(draw, row.get("record") or "", f_cell, int(content_width * 0.16))
+        draw.text((x_record - _text_width(draw, record, f_cell), centre + _baseline_shift(f_team, f_cell)), record, font=f_cell, fill=MUTED)
+        net = row.get("net") or row.get("value") or "—"
+        draw.text((x_net - _text_width(draw, net, f_team), centre), net, font=f_team, fill=accent)
+        y += row_h
+
+    footer = spec.get("footer") or "catchandstats.com"
+    dot = int(8 * scale)
+    draw.ellipse(
+        (pad, footer_y + int(footer_h * 0.42), pad + dot, footer_y + int(footer_h * 0.42) + dot),
+        fill=accent,
+    )
     draw.text((pad + int(18 * scale), footer_y), footer, font=f_footer, fill=DIM)
 
     buffer = io.BytesIO()

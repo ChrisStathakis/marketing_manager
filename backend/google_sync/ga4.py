@@ -36,8 +36,10 @@ _DATE_FORMAT = "%Y%m%d"
 DIMENSIONS = ["date", "sessionCampaignName"]
 METRICS = ["totalRevenue", "transactions"]
 
-# The organic-growth report: who arrived, from where, and did they read anything.
-TRAFFIC_DIMENSIONS = ["date", "sessionSource", "sessionMedium"]
+# The organic-growth report: who arrived, from where, which campaign/content,
+# and did they read anything. Campaign and content are the UTMs the playbooks
+# stamp on every link, so this is what joins a post to a session.
+TRAFFIC_DIMENSIONS = ["date", "sessionSource", "sessionMedium", "sessionCampaignName", "sessionManualAdContent"]
 TRAFFIC_METRICS = ["sessions", "engagedSessions", "totalUsers", "screenPageViews"]
 
 
@@ -50,23 +52,28 @@ def _b64(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def _load_credentials(credentials_json: str) -> dict:
+def _load_credentials(credentials_json: str, label: str = "Google Analytics") -> dict:
     try:
         info = json.loads(credentials_json)
     except (TypeError, ValueError) as exc:
         raise GA4Error(
-            "Google Analytics credentials are not valid JSON — paste the whole "
+            f"{label} credentials are not valid JSON — paste the whole "
             "service-account key file."
         ) from exc
     if not isinstance(info, dict) or not info.get("client_email") or not info.get("private_key"):
         raise GA4Error(
-            "Google Analytics credentials look incomplete — expected a service-account "
+            f"{label} credentials look incomplete — expected a service-account "
             "key file with client_email and private_key."
         )
     return info
 
 
-def signed_jwt(info: dict, token_uri: str, now: int | None = None) -> str:
+def signed_jwt(
+    info: dict,
+    token_uri: str,
+    now: int | None = None,
+    scopes: list[str] | None = None,
+) -> str:
     """Build the RS256 JWT assertion that is exchanged for an access token."""
     issued_at = int(now if now is not None else time.time())
     header: dict = {"alg": "RS256", "typ": "JWT"}
@@ -74,7 +81,7 @@ def signed_jwt(info: dict, token_uri: str, now: int | None = None) -> str:
         header["kid"] = info["private_key_id"]
     claims = {
         "iss": info["client_email"],
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(scopes or SCOPES),
         "aud": token_uri,
         "iat": issued_at,
         "exp": issued_at + JWT_LIFETIME_SECONDS,
@@ -93,13 +100,18 @@ def signed_jwt(info: dict, token_uri: str, now: int | None = None) -> str:
     return f"{signing_input.decode()}.{_b64(signature)}"
 
 
-def _access_token(credentials_json: str, timeout: int = 30) -> str:
-    info = _load_credentials(credentials_json)
+def _access_token(
+    credentials_json: str,
+    timeout: int = 30,
+    scopes: list[str] | None = None,
+    label: str = "Google Analytics",
+) -> str:
+    info = _load_credentials(credentials_json, label=label)
     token_uri = info.get("token_uri") or DEFAULT_TOKEN_URI
     body = urllib.parse.urlencode(
         {
             "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": signed_jwt(info, token_uri),
+            "assertion": signed_jwt(info, token_uri, scopes=scopes),
         }
     ).encode()
     request = urllib.request.Request(
@@ -230,16 +242,19 @@ def run_report(credentials_json: str, property_id: str, body: dict, timeout: int
 def parse_traffic_report(payload: dict) -> list[dict]:
     """Turn a ``runReport`` response into per-day, per-source traffic rows.
 
-    Returns ``[{"date", "source", "medium", "sessions", "engaged_sessions",
-    "users", "views"}]``. ``(direct)``/``(none)`` are GA4's own placeholders and
-    are kept as-is: the report is about where people came from, and "nowhere"
-    is a legitimate answer worth seeing.
+    Returns ``[{"date", "source", "medium", "campaign", "content", "sessions",
+    "engaged_sessions", "users", "views"}]``. ``(direct)``/``(none)`` are GA4's
+    own placeholders and are kept as-is: the report is about where people came
+    from, and "nowhere" is a legitimate answer worth seeing.
+
+    Older responses with only the first three dimensions are still accepted, so
+    a queued sync from before the UTM columns existed does not fail.
     """
     rows = []
     for row in payload.get("rows") or []:
         dimensions = [value.get("value", "") for value in row.get("dimensionValues") or []]
         metrics = [value.get("value", "0") for value in row.get("metricValues") or []]
-        if len(dimensions) < len(TRAFFIC_DIMENSIONS) or len(metrics) < len(TRAFFIC_METRICS):
+        if len(dimensions) < 3 or len(metrics) < len(TRAFFIC_METRICS):
             continue
         day = _parse_date(dimensions[0])
         if day is None:
@@ -249,6 +264,8 @@ def parse_traffic_report(payload: dict) -> list[dict]:
                 "date": day,
                 "source": dimensions[1].strip() or "(direct)",
                 "medium": dimensions[2].strip(),
+                "campaign": dimensions[3].strip() if len(dimensions) > 3 else "",
+                "content": dimensions[4].strip() if len(dimensions) > 4 else "",
                 "sessions": _to_int(metrics[0]),
                 "engaged_sessions": _to_int(metrics[1]),
                 "users": _to_int(metrics[2]),

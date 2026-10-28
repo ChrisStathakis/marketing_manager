@@ -16,7 +16,9 @@ export const campaignSchema = z
     status: z.enum(CAMPAIGN_STATUSES),
     start_date: z.string(),
     end_date: z.string(),
+    round_label: z.string().trim().max(120, 'Keep it under 120 characters.'),
     utm_campaign: z.string().trim().max(255, 'Keep it under 255 characters.'),
+    landing_path: z.string().trim().max(500, 'Keep it under 500 characters.'),
   })
   .superRefine((values, ctx) => {
     if (values.start_date && values.end_date && values.end_date < values.start_date) {
@@ -38,7 +40,9 @@ export function campaignToFormValues(campaign?: Campaign): CampaignFormValues {
     status: campaign?.status ?? 'draft',
     start_date: campaign?.start_date ?? '',
     end_date: campaign?.end_date ?? '',
+    round_label: campaign?.round_label ?? '',
     utm_campaign: campaign?.utm_campaign ?? '',
+    landing_path: campaign?.landing_path ?? '',
   };
 }
 
@@ -108,12 +112,28 @@ export function CampaignFormFields({ form, idPrefix = '' }: { form: UseFormRetur
         </Field>
       </div>
       <Field
+        label="Round label"
+        htmlFor={id('round_label')}
+        error={errors.round_label?.message}
+        hint="Optional — e.g. Round 8. Used in the playbook title templates."
+      >
+        <Input id={id('round_label')} placeholder="Round 8" {...register('round_label')} />
+      </Field>
+      <Field
         label="UTM campaign"
         htmlFor={id('utm_campaign')}
         error={errors.utm_campaign?.message}
         hint="Used to attribute orders and results (utm_campaign value)."
       >
         <Input id={id('utm_campaign')} placeholder="fall-baskets" {...register('utm_campaign')} />
+      </Field>
+      <Field
+        label="Landing path"
+        htmlFor={id('landing_path')}
+        error={errors.landing_path?.message}
+        hint="Optional. Campaign links point here instead of the homepage, e.g. /team-advanced-stats. This also lets Search Console match the campaign's pages."
+      >
+        <Input id={id('landing_path')} placeholder="/team-advanced-stats" {...register('landing_path')} />
       </Field>
     </div>
   );

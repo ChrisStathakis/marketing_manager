@@ -10,7 +10,7 @@ It never publishes anything. It reads the public API, writes drafts, and stops. 
     The studio only calls the public JSON endpoints that the site itself uses. Nothing here
     writes to catchandstats.com, and no account credentials for X, Reddit, TikTok or Telegram
     are stored anywhere. The one exception is the optional **Instagram comment research**
-    section (8), which uses a `sessionid` cookie from a throwaway Instagram account — see
+    section (9), which uses a `sessionid` cookie from a throwaway Instagram account — see
     *Instagram comment research* below.
 
 ## The weekly rhythm
@@ -26,6 +26,21 @@ It never publishes anything. It reads the public API, writes drafts, and stops. 
 **Fill the calendar** creates all eight slots (including the Instagram carousel, the Reddit
 value post, the TikTok short and the Telegram digest) as scheduled content items, plus a to-do
 for each one. Run it once a week; run it twice and it skips what already exists.
+
+## Playbooks: a series you can run again
+
+For a multi-week launch (the seeded **Top 8 launch — 14 days** is the example), use
+**Playbooks** in the sidebar instead of the weekly rhythm. A playbook stores *offsets*, not
+dates: “day +0 at 21:00, Instagram carousel, Greek”, “day +1 at 08:30, Reddit text post,
+English”. Choose a start date and a round label, preview the dated list, then run it. Every
+run creates a **new campaign**, so last round's content, KPI targets and results stay intact.
+
+The editor supports adding, removing and reordering slots, changing platform, format,
+language, time, day offset, UTM content and paid budget, and marking a slot as a to-do only.
+The same run creates the campaign's KPI targets; the report compares target vs actual. A
+paid slot also creates a planned **Boost** with its daily/total budget — nothing launches
+without a person approving it. Use **Build Top 8 carousel** to render the cover + one
+four-factors slide per team + CTA, then download the set as a ZIP.
 
 ## Building a card
 
@@ -133,9 +148,31 @@ on visits, not on how loud the platform's own counter was.
   X, Instagram, TikTok and Telegram drafts. A platform with clicks but no sessions is a broken
   link or a missing parameter, not a quiet audience.
 
+## Google organic search (assisted)
+
+**7. Google organic search** adds Google Search Console to the same window: site clicks,
+impressions, CTR, average position, top pages and top queries. It answers a different question
+from GA4: *did the pages we promoted become more visible in Google search?*
+
+- Requires the **Google Search Console** integration (Settings -> API keys): a service-account
+  JSON plus the exact property string (`sc-domain:catchandstats.com` for a Domain property, or
+  the URL-prefix property). The service account must be a user of that property. See
+  [API keys](../api-keys.md#google-search-console-google_search_console_credentials-google_search_console_site_url).
+- Press **Sync Search Console**, or run `python manage.py sync_google --search-console-only`
+  on the server. A sync stores daily site totals, page rows and query rows, and is idempotent.
+- **Campaign rows are assisted, not causal.** Search Console has no UTM dimension, so the report
+  matches the campaign's content links to their canonical page paths. A campaign whose links all
+  point at `/` can only show homepage search; set a **landing path** on the campaign or playbook
+  to get page-level data. GA4's `sessionCampaignName` remains the UTM source of truth.
+- Google normally delays Search Console data by 2-3 days. The report shows the newest imported
+  date, so an incomplete tail of the window is expected.
+- This data is Google organic search only: it does not include social impressions, sessions or
+  conversions. A campaign can have strong social clicks and little search movement, or the
+  reverse, without either number being wrong.
+
 ## What to do next
 
-**7. What to do next** turns the same numbers into a short list of decisions, with the evidence
+**8. What to do next** turns the same numbers into a short list of decisions, with the evidence
 attached so you can disagree with it:
 
 | Rule | What it means |
@@ -155,7 +192,7 @@ short list rather than confident nonsense.
 
 ## Instagram comment research
 
-**8. Instagram commenters (research)** answers a different question: *who* is talking about a
+**9. Instagram commenters (research)** answers a different question: *who* is talking about a
 post you did not write. Paste a **public** post URL, press **Track post**, then **Scrape** to
 pull its comments. The studio stores each commenter and keeps them: re-scraping refreshes the
 text and likes without creating duplicates, so a post becomes a small history rather than a
@@ -229,9 +266,13 @@ Season selectors accept any of `6`, `E2026` or `2026-2027`.
 | *Google Analytics is not configured* in section 6 | No GA4 credentials or property ID | Settings → API keys: service-account JSON + property ID |
 | **Sync GA4** answers `403` | Not staff, or the service account lacks the property | Run `manage.py sync_google --organic`; check Analytics access |
 | Traffic table is empty after a sync | Sessions came from sources the window did not cover, or no sessions yet | Widen the window; remember traffic is stored per day and source |
-| **Scrape** answers `400` in section 8 | The sessionid is missing, wrong or expired | Settings → API keys → Instagram: paste a fresh `sessionid`, then **Test session** |
+| *Google Search Console is not configured* in section 7 | No service-account JSON or property string | Settings -> API keys: paste the JSON and the exact property (`sc-domain:...` or `https://.../`) |
+| **Sync Search Console** answers `403` | Not staff, or the service account is not a user of that property | Add the service-account `client_email` in Search Console -> Settings -> Users and permissions |
+| Campaign search totals are empty or only `/` | Campaign links point at the homepage, or no page rows imported yet | Set a landing path on the campaign/playbook, then sync a window after the links went live |
+| Newest Search Console day is 2-3 days old | Google delays Search Analytics data | Expected; treat the last days as incomplete rather than a drop |
+| **Scrape** answers `400` in section 9 | The sessionid is missing, wrong or expired | Settings → API keys → Instagram: paste a fresh `sessionid`, then **Test session** |
 | **Scrape** answers `429` | Instagram is throttling that session | Wait a few minutes; scrape less per run, or set `INSTAGRAM_PROXY` |
-| Section 8 says *Instagram research is turned off* | `INSTAGRAM_SCRAPER_ENABLED=False` in `backend/.env` | Set it to `True` and restart the backend |
+| Section 9 says *Instagram research is turned off* | `INSTAGRAM_SCRAPER_ENABLED=False` in `backend/.env` | Set it to `True` and restart the backend |
 | Card image does not load in the list | Media files are only served in `DEBUG` | Serve `backend/media/` from the web server in production |
 
 ## Next

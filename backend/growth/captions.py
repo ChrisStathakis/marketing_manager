@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .metrics import metric_label
 
-PLATFORMS = ("x", "instagram", "reddit", "tiktok", "telegram")
+PLATFORMS = ("x", "instagram", "reddit", "tiktok", "facebook", "youtube", "linkedin", "telegram")
 LOCALES = ("en", "el", "tr", "sr", "lt")
 
 #: Character budgets that actually matter (X hard limit, the rest soft).
@@ -21,6 +21,9 @@ LIMITS = {
     "instagram": 2200,
     "reddit": 40000,
     "tiktok": 2200,
+    "facebook": 63206,
+    "youtube": 5000,
+    "linkedin": 3000,
     "telegram": 4096,
 }
 
@@ -63,6 +66,27 @@ HOOKS: dict[str, dict[str, str]] = {
         "sr": "Šta zapravo odlučuje ovaj duel: {subject}",
         "lt": "Kas iš tikrųjų nulems šias rungtynes: {subject}",
     },
+    "team": {
+        "en": "The four factors behind {subject}, with last season next to them",
+        "el": "Τα τέσσερα factors πίσω από {subject}, δίπλα στα περσινά",
+        "tr": "{subject} arkasındaki dört faktör, geçen sezonla birlikte",
+        "sr": "Četiri faktora iza {subject}, uz prošlu sezonu",
+        "lt": "Keturi {subject} faktoriai, šalia praėjusio sezono",
+    },
+    "team_delta": {
+        "en": "What changed for {subject} since last season",
+        "el": "Τι άλλαξε για {subject} από πέρσι",
+        "tr": "{subject} için geçen sezondan bu yana ne değişti",
+        "sr": "Šta se promenilo za {subject} od prošle sezone",
+        "lt": "Kas pasikeitė {subject} nuo praėjusio sezono",
+    },
+    "top8": {
+        "en": "The Top 8, sorted by record and then net rating",
+        "el": "Το Top 8, με ρεκόρ και μετά καθαρή αξιολόγηση",
+        "tr": "İlk 8: önce galibiyet, sonra net rating",
+        "sr": "Top 8: prvo skor, zatim net rejting",
+        "lt": "Top 8: pirmiausia rezultatas, tada net reitingas",
+    },
 }
 
 CTAS = {
@@ -96,7 +120,16 @@ DISCLOSURE = {
     "αναλύσεων EuroLeague. Τα νούμερα προέρχονται από εκεί.",
 }
 
-MAX_HASHTAGS = {"x": 1, "instagram": 5, "reddit": 0, "tiktok": 3, "telegram": 2}
+MAX_HASHTAGS = {
+    "x": 1,
+    "instagram": 10,
+    "reddit": 0,
+    "tiktok": 6,
+    "facebook": 3,
+    "youtube": 3,
+    "linkedin": 3,
+    "telegram": 2,
+}
 
 
 def _subject(spec: dict) -> str:
@@ -123,7 +156,7 @@ def _row_note(row: dict, locale: str) -> str:
     return row.get("note") or ""
 
 
-def _body_lines(spec: dict, locale: str = "en") -> list[str]:
+def _body_lines(spec: dict, locale: str = "en", max_rows: int = 5) -> list[str]:
     lines: list[str] = []
     if spec.get("headline"):
         label = (
@@ -135,11 +168,15 @@ def _body_lines(spec: dict, locale: str = "en") -> list[str]:
         if spec.get("headline_note"):
             line += f" ({spec['headline_note']})"
         lines.append(line)
-    for row in (spec.get("rows") or [])[:5]:
+    for row in (spec.get("rows") or [])[:max_rows]:
         if "left" in row or "right" in row:
             lines.append(
                 f"{_row_label(row, locale)}: {row.get('left', '—')} vs {row.get('right', '—')}"
             )
+            continue
+        if row.get("team") and row.get("net"):
+            record = f" ({row['record']})" if row.get("record") else ""
+            lines.append(f"{row['team']}{record} — {row['net']} net")
             continue
         line = f"{_row_label(row, locale)}: {row.get('value', '—')}"
         note = _row_note(row, locale)
@@ -175,6 +212,30 @@ def _x_draft(hook: str, body: list[str], link: str, tags: list[str], limit: int 
     return text[: limit - 1].rstrip() + "…" if len(text) > limit else text
 
 
+def _x_thread(hook: str, body: list[str], link: str, tags: list[str], limit: int = 280) -> list[str]:
+    """Turn a table into an 8-10 tweet thread, one number per tweet.
+
+    X is where the Top 8 table travels best, but one 280-character post cannot
+    hold eight clubs. The thread keeps the hook and the CTA and sends the middle
+    rows as replies; the first tweet is still the standalone draft.
+    """
+    tweets = [hook]
+    for line in body[:8]:
+        candidate = f"{len(tweets)}/ {line}"
+        if len(candidate) > limit:
+            candidate = candidate[: limit - 1].rstrip() + "…"
+        tweets.append(candidate)
+    cta = f"Full profiles and definitions: {link}" if link else "Full data: catchandstats.com"
+    if len(cta) > limit:
+        cta = "Full data: catchandstats.com"
+    tweets.append(cta)
+    if tags:
+        first = f"{tweets[0]} {' '.join(tags)}".strip()
+        if len(first) <= limit:
+            tweets[0] = first
+    return tweets
+
+
 def _fit(sections: list[str], limit: int, separator: str = "\n\n") -> str:
     """Drop the least important section until the draft fits the platform."""
     sections = [section for section in sections if section]
@@ -193,7 +254,7 @@ def _reddit(spec: dict, locale: str, link: str) -> tuple[str, str]:
     title = hook.format(subject=subject)
     if len(title) > 300:
         title = f"{subject} — the numbers behind it"
-    body = [f"{line}" for line in _body_lines(spec, locale)]
+    body = [f"{line}" for line in _body_lines(spec, locale, max_rows=10)]
     tail = DISCLOSURE.get(locale, DISCLOSURE["en"])
     sections = [*body, tail]
     if link:
@@ -207,12 +268,18 @@ def build_captions(
     platforms: tuple[str, ...] | list[str] | None = None,
     locales: tuple[str, ...] | list[str] | None = None,
     links: dict[str, str] | None = None,
+    hashtags: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """Draft every requested platform × language combination.
 
     ``links`` lets each platform get its own UTM-tagged URL; ``link`` is the
     fallback. Reddit gets no tracked link unless one is passed explicitly,
     because a naked tracking URL in a text post reads like an ad.
+
+    ``hashtags`` is an optional bank keyed by ``"platform:locale"`` (or just
+    ``locale``). When it is supplied the bank replaces the built-in three tags;
+    a caller can therefore keep the plan's 8-12 Instagram tags without changing
+    this module.
     """
     kind = spec.get("kind", "player")
     if kind not in HOOKS:
@@ -237,18 +304,33 @@ def build_captions(
                 continue
             hook = hook_templates.get(locale, hook_templates["en"]).format(subject=subject)
             body = _body_lines(spec, locale)
-            tags = _tags(locale, platform)
+            if hashtags:
+                tags = list(hashtags.get(f"{platform}:{locale}") or hashtags.get(locale) or _tags(locale, platform))
+            else:
+                tags = _tags(locale, platform)
+            tags = tags[: MAX_HASHTAGS.get(platform, 2)]
             cta = (CTAS if platform_link else CTA_NO_LINK).get(locale, CTAS["en"])
             cta = cta.format(link=platform_link) if platform_link else cta
             title = ""
+            thread: list[str] = []
 
             if platform == "reddit":
                 title, text = _reddit(spec, locale, platform_link)
             elif platform == "x":
                 text = _x_draft(hook, body, platform_link, tags)
+                thread = _x_thread(hook, _body_lines(spec, locale, max_rows=8), platform_link, tags)
+                if thread:
+                    text = thread[0]
             elif platform == "tiktok":
                 sections = [hook, "\n".join(body[:2]), "Full breakdown → link in bio.", " ".join(tags)]
                 text = _fit(sections, LIMITS["tiktok"])
+            elif platform == "youtube":
+                title = _truncate_text(hook, 100)
+                sections = [hook, "\n".join(body[:5]), cta, " ".join(tags)]
+                text = _fit(sections, LIMITS["youtube"])
+            elif platform in ("facebook", "linkedin"):
+                sections = [hook, "\n".join(body[:5]), cta, " ".join(tags)]
+                text = _fit(sections, LIMITS[platform])
             elif platform == "telegram":
                 sections = [hook, "\n".join(body[:5]), cta, " ".join(tags)]
                 text = _fit(sections, LIMITS["telegram"])
@@ -256,17 +338,23 @@ def build_captions(
                 sections = [hook, "\n".join(body[:5]), cta, " ".join(tags)]
                 text = _fit(sections, LIMITS["instagram"])
 
-            drafts.append(
-                {
-                    "platform": platform,
-                    "locale": locale,
-                    "title": title,
-                    "text": text,
-                    "hashtags": tags,
-                    "limit": LIMITS[platform],
-                    "length": len(text),
-                    "within_limit": len(text) <= LIMITS[platform],
-                    "localisation": "full" if locale in FULL_LOCALES else "hook",
-                }
-            )
+            draft = {
+                "platform": platform,
+                "locale": locale,
+                "title": title,
+                "text": text,
+                "hashtags": tags,
+                "limit": LIMITS[platform],
+                "length": len(text),
+                "within_limit": len(text) <= LIMITS[platform],
+                "localisation": "full" if locale in FULL_LOCALES else "hook",
+            }
+            if thread:
+                draft["thread"] = thread
+            drafts.append(draft)
     return drafts
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"

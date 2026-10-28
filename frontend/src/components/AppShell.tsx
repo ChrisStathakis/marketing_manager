@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
+  BookOpen,
   CalendarDays,
   FileText,
   LayoutDashboard,
@@ -34,7 +35,10 @@ interface NavSection {
 const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Grow',
-    items: [{ to: '/growth', label: 'Growth studio', icon: Sparkles }],
+    items: [
+      { to: '/growth', label: 'Growth studio', icon: Sparkles },
+      { to: '/playbooks', label: 'Playbooks', icon: BookOpen },
+    ],
   },
   {
     label: 'Plan',

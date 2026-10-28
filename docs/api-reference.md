@@ -68,6 +68,22 @@ encrypted, never returned. Non-secret settings are returned so the UI can pre-fi
   - Only `revenue`, `orders`, `roas` and `source` are written — `spend`/`ctr` are left alone (GA4 has no ad cost).
   - Equivalent CLI: `manage.py sync_google --days 7`.
 
+### Google Search Console sync
+
+- `POST /api/integrations/google-search-console/sync/` - staff only. Body
+  `{"days"?: 1..365}` (default 30). Pulls site totals, page rows and query rows from
+  the Search Console Search Analytics API and upserts `SearchConsoleSnapshot` rows.
+  Returns `{created, updated, skipped: 0, unmatched: [], rows, pages, queries, clicks,
+  impressions, start, end, site_url, last_synced_at}`.
+  - `400` when the service-account JSON or Search Console property is missing.
+  - `502` when Google refuses the request; the message is stored in `last_sync_error`.
+  - Equivalent CLI: `manage.py sync_google --search-console-only` and
+    `manage.py sync_google --search-console` (alongside GA4).
+  - Search Console has no UTM dimension. Campaign reports match its pages to the
+    canonical paths of the campaign's content links and label the result as
+    **assisted search**. Set `Campaign.landing_path` (or the playbook landing path)
+    so campaign links target a real page instead of `/`.
+
 ## Dashboard
 
 `GET /api/dashboard/summary/` — totals (`spend`, `revenue`, `orders`, `roas`), `deltas` vs the previous same-length window (percent, `null` when there is no basis), a daily `series` of revenue/spend/orders, the resolved `range`, and the top-20 `campaigns` breakdown.
@@ -123,11 +139,14 @@ of an error (truncated pagination is reported the same way).
 - `POST /api/cards/{id}/recaption/` — body `{link?, platforms?, locales?}`; re-uses the
   stored spec to produce new copy.
 - `GET /api/growth/report/` — `?days=1..365` (default 30) and `?campaign=`. Returns `totals`
-  and `previous_totals` (posts, impressions, engagements, comments, clicks,
-  `engagement_rate`, `click_rate`), `by_platform` (same shape plus `best_post`) ranked by
-  click rate, `by_kind` and `by_metric` breakdowns, `trend` (per-platform change against the
-  equally long window before), `traffic` (the GA4 summary below), `traffic_configured` and
-  the top five `best_posts`.
+  and `previous_totals` (posts, impressions, reach, engagements, saves, shares, comments,
+  profile visits, clicks, signups, average upvote ratio and both rates), `by_platform`
+  (same shape plus `best_post`) ranked by click rate, `by_kind`, `by_format`, `by_locale`
+  and `by_metric` breakdowns, `kpi_targets` (target, actual, progress, met) for the selected
+  campaign, `trend` (per-platform change against the equally long window before),
+  `traffic` (the GA4 summary below), `traffic_configured`, `search_console` (the
+  Search Console report below; its campaign section is assisted, not causal) and the
+  top five `best_posts`.
 - `GET /api/growth/insights/` — `?days=1..365` (default 30) and `?campaign=`. The report
   aggregated into `insights[]` (`severity`, `title`, `detail`, `evidence[]`, optional
   `action`) and `next_cards[]` (`kind`, `metric`, `country`, `reason`) ready to drop into the
@@ -135,16 +154,44 @@ of an error (truncated pagination is reported the same way).
   produced GA4 sessions, GA4 traffic from an unlogged channel, reach without conversion,
   falling behind the cadence and stale experiments. Problems (`warn`) sort first, then wins,
   then housekeeping.
-- `GET /api/growth/traffic/` — `?days=1..365` (default 30) and `?source=`. Stored GA4
-  snapshots plus a `summary` (`totals`, `by_platform`, `by_source`), `configured`,
-  `can_sync` and `last_synced_at`. Reads the database only; never calls Google.
+- `GET /api/growth/traffic/` — `?days=1..365` (default 30), `?source=`, `?campaign=` and
+  `?content=`. Stored GA4 snapshots plus a `summary` (`totals`, `by_platform`, `by_source`,
+  `by_campaign`, `by_content`), `configured`, `can_sync` and `last_synced_at`. Reads the
+  database only; never calls Google.
 - `POST /api/growth/traffic/sync/` — body `{days?}` (default 30). Pulls per-day sessions per
   source from the GA4 Data API into `TrafficSnapshot` rows (idempotent per date/source/medium)
   and returns `{created, updated, rows, sessions, social_sessions, other_sources, start,
   end, last_synced_at}`. Staff only; `400` when GA4 is not configured, `502` when Google
   refuses the call.
-- `/api/performance/` — CRUD for published-post numbers, including `kind`, `metric_key`, and
-  the derived `click_rate`/`engagement_rate`. `/api/experiments/` — CRUD for growth
+- `GET /api/growth/search-console/` - `?days=1..365` (default 30) and `?campaign=`.
+  Reads `SearchConsoleSnapshot` rows only. Returns `window`, `previous_window`,
+  `totals`, `previous_totals`, `by_page`, `by_query`, optional `campaign`
+  (`pages`, `totals`, `by_page`, `matched`, `warning`), `data_through`,
+  `data_lag_days`, `configured`, `site_url` and `last_synced_at`. Site totals
+  follow `days`; the campaign section uses the campaign's own dates clipped to
+  today. Campaign rows are matched by canonical page path and are **assisted
+  search**, not UTM attribution. A campaign with only `/` links returns a
+  warning.
+- `/api/playbooks/` — CRUD for date-free content series (`slots[]`, each with `day_offset`,
+  `time`, `platform`, `format`, `content_kind`, `locales`, `title_template`, `brief`,
+  `utm_content_template`, `asset_required`, `paid_budget`, `is_task_only`). `PATCH` with a
+  `slots` array replaces the whole ordered list; omit it to leave slots untouched.
+- `POST /api/playbooks/{id}/preview/` — body `{start_date?, round_label?, locales?,
+  platforms?, utm_campaign?, landing_path?, skip_past?}`. Dry run: returns every dated item, UTM link, channel and
+  missing channel without writing. `POST /api/playbooks/{id}/run/` — same body plus
+  `name?`, `utm_campaign?`, `create_targets?`, `kpi_targets?`, `append?`, `campaign?`.
+  Creates a **new campaign** and its content/tasks/KPI targets; `append` with a campaign
+  is the explicit exception. `POST /api/playbooks/{id}/duplicate/` copies the template.
+- `/api/card-sets/` — ordered carousels. `POST` with `{specs[]}` or `{season?, top_n?,
+  compare_previous?, include_table?, include_cta?}` renders each slide and stores the PNGs
+  on `StatCard` rows; `GET /api/card-sets/{id}/download/` returns a ZIP. The team table is
+  available at `GET /api/growth/teams/?season=`.
+- `/api/kpi-targets/`, `/api/boosts/`, `/api/hashtag-sets/` — target-vs-actual metrics,
+  planned paid boosts and reusable locale hashtag banks. `/api/content-assets/` stores
+  rendered slides/video files attached to a calendar item.
+- `/api/performance/` — CRUD for published-post numbers, including `kind`, `metric_key`,
+  `format`, `locale`, `utm_content`, `reach`, `saves`, `shares`, `profile_visits`,
+  `signups`, `upvote_ratio`, and the derived rates. `/api/experiments/` — CRUD for growth
   experiments (`name`, `hypothesis`, `metric`, `status`, `result`, dates).
 
 ### Instagram comment research
@@ -185,7 +232,7 @@ sync plus organic; `--days` defaults to 7 for revenue and 30 for traffic).
 
 Settings → **Backup & restore** covers exporting and replacing data.
 
-- `GET /api/backup/export/` — any authenticated user. Streams a JSON file (`marketing-backup-YYYY-MM-DD.json`) with every business model: `channels`, `campaigns`, `content`, `ads`, `results`, `plans`, `suggestions`, `shop`, saved `cards`, `performance`, `experiments` and GA4 `traffic` snapshots. Users, passwords and stored API keys are **never** included; `Campaign.owner` is written as a username.
+- `GET /api/backup/export/` — any authenticated user. Streams a JSON file (`marketing-backup-YYYY-MM-DD.json`) with every business model: `channels`, `campaigns`, `content`, `ads`, `results`, `plans`, `suggestions`, `shop`, saved `cards`, `performance`, `experiments`, GA4 `traffic` snapshots and Search Console snapshots. Users, passwords and stored API keys are **never** included; `Campaign.owner` is written as a username.
 - `GET /api/backup/database/` — any authenticated user, SQLite only (400 otherwise). Streams a consistent snapshot of the whole `db.sqlite3`, accounts included.
 - `POST /api/backup/restore/` — staff only. Multipart `file` plus `confirm=replace`. A JSON backup replaces all business data (accounts and API keys are kept); a `.sqlite3` file replaces the whole database after keeping a timestamped `.bak` copy next to it (restart the server afterwards). Unknown files → 400.
 

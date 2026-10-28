@@ -34,7 +34,9 @@ import type {
   GrowthNextCard,
   GrowthReport,
   GrowthReportRow,
+  GrowthSearchSyncResult,
   GrowthStatCard,
+  GrowthTeam,
   GrowthTrafficResponse,
   GrowthTrendRow,
   InstagramAnalysis,
@@ -83,6 +85,11 @@ function rate(value: number | null): string {
   return value == null ? '—' : `${(value * 100).toFixed(2)}%`;
 }
 
+/** KPI rows whose target/actual are fractions rather than counts. */
+function isPercentMetric(metric: string): boolean {
+  return metric === 'upvote_ratio' || metric === 'search_ctr';
+}
+
 function StatBox({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-field border border-border bg-surface-alt p-3">
@@ -115,22 +122,33 @@ function TrendDelta({ row }: { row: GrowthTrendRow | undefined }) {
   );
 }
 
-function BreakdownTable({ rows, group }: { rows: GrowthReportRow[]; group: 'kind' | 'metric' }) {
+function BreakdownTable({
+  rows,
+  group,
+}: {
+  rows: GrowthReportRow[];
+  group: 'kind' | 'metric' | 'format' | 'locale';
+}) {
   if (!rows.length) {
     return (
       <p className="text-sm text-muted-foreground">
         {group === 'kind'
           ? 'Log a post with its card type and this ranks the formats.'
-          : 'Log a post with its metric and this tells you which subject clicks.'}
+          : group === 'format'
+            ? 'Log a post with its format (carousel, thread, reel) to compare it.'
+            : group === 'locale'
+              ? 'Log a post with its language to compare the markets.'
+              : 'Log a post with its metric and this tells you which subject clicks.'}
       </p>
     );
   }
+  const heading = { kind: 'Card type', metric: 'Metric', format: 'Format', locale: 'Language' }[group];
   return (
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>{group === 'kind' ? 'Card type' : 'Metric'}</TableHead>
+            <TableHead>{heading}</TableHead>
             <TableHead className="text-right">Posts</TableHead>
             <TableHead className="text-right">Impressions</TableHead>
             <TableHead className="text-right">Click rate</TableHead>
@@ -173,6 +191,8 @@ export default function GrowthPage() {
   const [player, setPlayer] = useState(AUTO);
   const [teamA, setTeamA] = useState(AUTO);
   const [teamB, setTeamB] = useState(AUTO);
+  const [team, setTeam] = useState(AUTO);
+  const [topN, setTopN] = useState('8');
   const [format, setFormat] = useState('x');
   const [campaignId, setCampaignId] = useState('');
 
@@ -194,11 +214,20 @@ export default function GrowthPage() {
   const [logPlatform, setLogPlatform] = useState('x');
   const [logDate, setLogDate] = useState(() => toDateInputValue(new Date()));
   const [logImpressions, setLogImpressions] = useState('');
+  const [logReach, setLogReach] = useState('');
   const [logEngagements, setLogEngagements] = useState('');
+  const [logSaves, setLogSaves] = useState('');
+  const [logShares, setLogShares] = useState('');
+  const [logProfileVisits, setLogProfileVisits] = useState('');
+  const [logSignups, setLogSignups] = useState('');
+  const [logUpvoteRatio, setLogUpvoteRatio] = useState('');
   const [logClicks, setLogClicks] = useState('');
   const [logUrl, setLogUrl] = useState('');
   const [logKind, setLogKind] = useState(NONE);
   const [logMetric, setLogMetric] = useState(NONE);
+  const [logFormat, setLogFormat] = useState(NONE);
+  const [logLocale, setLogLocale] = useState(NONE);
+  const [logContent, setLogContent] = useState('');
 
   // Derived selection: the page defaults to the active season and newest
   // campaign without an extra render pass.
@@ -224,6 +253,15 @@ export default function GrowthPage() {
     enabled: Boolean(activeSeason),
   });
 
+  const teams = useQuery({
+    queryKey: ['growth', 'teams', activeSeason],
+    queryFn: () =>
+      fetchOne<{ results: GrowthTeam[] }>('/growth/teams/', {
+        season: activeSeason,
+      }),
+    enabled: Boolean(activeSeason) && ['matchup', 'team', 'team_delta', 'top8'].includes(kind),
+  });
+
   const suggestParams = useMemo(
     () => ({
       season: activeSeason,
@@ -231,10 +269,18 @@ export default function GrowthPage() {
       country: country === AUTO ? undefined : country,
       metric: metric === AUTO ? undefined : metric,
       player: player === AUTO ? undefined : player,
-      teams: kind === 'matchup' ? [teamA, teamB].filter((team) => team !== AUTO).join(',') : undefined,
+      top_n: kind === 'top8' ? topN : undefined,
+      teams:
+        kind === 'matchup'
+          ? [teamA, teamB].filter((row) => row !== AUTO).join(',')
+          : kind === 'team' || kind === 'team_delta'
+            ? team === AUTO
+              ? undefined
+              : team
+            : undefined,
       utm_campaign: selectedCampaign?.utm_campaign || 'organic-growth',
     }),
-    [activeSeason, kind, country, metric, player, teamA, teamB, selectedCampaign],
+    [activeSeason, kind, country, metric, player, topN, team, teamA, teamB, selectedCampaign],
   );
 
   const suggest = useMutation({
@@ -325,8 +371,17 @@ export default function GrowthPage() {
         metric_key: logMetric === NONE ? '' : logMetric,
         posted_at: new Date(`${logDate}T12:00:00`).toISOString(),
         impressions: Number(logImpressions) || 0,
+        reach: Number(logReach) || 0,
         engagements: Number(logEngagements) || 0,
+        saves: Number(logSaves) || 0,
+        shares: Number(logShares) || 0,
+        profile_visits: Number(logProfileVisits) || 0,
+        signups: Number(logSignups) || 0,
+        upvote_ratio: logUpvoteRatio ? Number(logUpvoteRatio) / 100 : null,
         clicks: Number(logClicks) || 0,
+        format: logFormat === NONE ? '' : logFormat,
+        locale: logLocale === NONE ? '' : logLocale,
+        utm_content: logContent,
         url: logUrl,
         campaign: activeCampaignId ? Number(activeCampaignId) : null,
       });
@@ -335,8 +390,15 @@ export default function GrowthPage() {
     onSuccess: () => {
       toast.success('Post logged');
       setLogImpressions('');
+      setLogReach('');
       setLogEngagements('');
+      setLogSaves('');
+      setLogShares('');
+      setLogProfileVisits('');
+      setLogSignups('');
+      setLogUpvoteRatio('');
       setLogClicks('');
+      setLogContent('');
       setLogUrl('');
       void queryClient.invalidateQueries({ queryKey: ['growth', 'report'] });
       void queryClient.invalidateQueries({ queryKey: ['growth', 'insights'] });
@@ -345,18 +407,33 @@ export default function GrowthPage() {
   });
 
   const report = useQuery({
-    queryKey: qk.growthReport({ days: reportDays }),
-    queryFn: () => fetchOne<GrowthReport>('/growth/report/', { days: reportDays }),
+    queryKey: qk.growthReport({ days: reportDays, campaign: campaignId || undefined }),
+    queryFn: () =>
+      fetchOne<GrowthReport>('/growth/report/', {
+        days: reportDays,
+        campaign: campaignId || undefined,
+      }),
   });
 
   const insights = useQuery({
-    queryKey: qk.growthInsights({ days: reportDays }),
-    queryFn: () => fetchOne<GrowthInsights>('/growth/insights/', { days: reportDays }),
+    queryKey: qk.growthInsights({ days: reportDays, campaign: campaignId || undefined }),
+    queryFn: () =>
+      fetchOne<GrowthInsights>('/growth/insights/', {
+        days: reportDays,
+        campaign: campaignId || undefined,
+      }),
   });
 
   const traffic = useQuery({
-    queryKey: qk.growthTraffic({ days: reportDays }),
-    queryFn: () => fetchOne<GrowthTrafficResponse>('/growth/traffic/', { days: reportDays }),
+    queryKey: qk.growthTraffic({
+      days: reportDays,
+      campaign: selectedCampaign?.utm_campaign || undefined,
+    }),
+    queryFn: () =>
+      fetchOne<GrowthTrafficResponse>('/growth/traffic/', {
+        days: reportDays,
+        campaign: selectedCampaign?.utm_campaign || undefined,
+      }),
   });
 
   const syncTraffic = useMutation({
@@ -381,12 +458,31 @@ export default function GrowthPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   });
 
+  const syncSearchConsole = useMutation({
+    mutationFn: async (days: number) => {
+      const { data } = await api.post<GrowthSearchSyncResult>(
+        '/integrations/google-search-console/sync/',
+        { days },
+      );
+      return data;
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `${formatNumber(result.clicks)} clicks / ${formatNumber(result.impressions)} impressions imported`,
+        { description: `${result.pages} pages, ${result.queries} queries` },
+      );
+      void queryClient.invalidateQueries({ queryKey: ['growth', 'report'] });
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
   /** Drop a recommended card into the builder and draft it immediately. */
   const applyCard = (card: GrowthNextCard) => {
     setKind(card.kind);
     setMetric(card.metric ?? AUTO);
     setCountry(card.country ?? AUTO);
     setPlayer(AUTO);
+    setTeam(AUTO);
     setTeamA(AUTO);
     setTeamB(AUTO);
     requestSuggest({
@@ -471,6 +567,8 @@ export default function GrowthPage() {
   const metricLabels = new Map(data.metrics.map((row) => [row.key, row.label]));
   const platformLabels = new Map(data.log_platforms ?? data.platforms);
   const trendFor = (platformName: string) => report.data?.trend.find((row) => row.platform === platformName);
+  const search = report.data?.search_console;
+  const campaignSearch = search?.campaign;
   const localeNames: Record<string, string> = {
     en: 'English',
     el: 'Ελληνικά',
@@ -570,9 +668,9 @@ export default function GrowthPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={AUTO}>Auto (Greece vs Türkiye)</SelectItem>
-                      {(players.data?.teams ?? []).map((team) => (
-                        <SelectItem key={team} value={team}>
-                          {team}
+                      {(teams.data?.results ?? []).map((row) => (
+                        <SelectItem key={row.team_id} value={row.team_title}>
+                          {row.team_title}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -585,13 +683,51 @@ export default function GrowthPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={AUTO}>Auto</SelectItem>
-                      {(players.data?.teams ?? []).map((team) => (
-                        <SelectItem key={team} value={team}>
-                          {team}
+                      {(teams.data?.results ?? []).map((row) => (
+                        <SelectItem key={row.team_id} value={row.team_title}>
+                          {row.team_title}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </Field>
+              </div>
+            ) : kind === 'team' || kind === 'team_delta' || kind === 'top8' ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field
+                  label={kind === 'top8' ? 'Top teams' : 'Team'}
+                  hint={kind === 'top8' ? 'How many rows; the table renders all of them.' : 'Auto picks the best record, then net rating.'}
+                >
+                  {kind === 'top8' ? (
+                    <Input
+                      type="number"
+                      min={2}
+                      max={12}
+                      value={topN}
+                      onChange={(event) => setTopN(event.target.value)}
+                    />
+                  ) : (
+                    <Select value={team} onValueChange={setTeam}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={AUTO}>Auto (best net rating)</SelectItem>
+                        {(teams.data?.results ?? []).map((row) => (
+                          <SelectItem key={row.team_id} value={row.team_title}>
+                            {row.team_title} · {row.record}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Season check" hint="Team cards compare this season with the previous one.">
+                  <div className="rounded-field border border-border bg-surface-alt px-3 py-2 text-sm text-muted-foreground">
+                    {teams.isPending
+                      ? 'Loading team table…'
+                      : `${teams.data?.results.length ?? 0} teams · ${teams.data?.results[0]?.season_title ?? 'season'}`}
+                  </div>
                 </Field>
               </div>
             ) : (
@@ -792,6 +928,31 @@ export default function GrowthPage() {
                   <div className="max-h-72 overflow-auto rounded-field bg-surface-alt p-3 text-sm whitespace-pre-wrap">
                     {draft.text}
                   </div>
+                  {draft.thread && draft.thread.length > 1 && (
+                    <div className="space-y-2 rounded-field border border-border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                          Thread · {draft.thread.length} tweets
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copy(draft.thread?.join('\n\n') ?? '')}
+                        >
+                          <Copy />
+                          Copy thread
+                        </Button>
+                      </div>
+                      <ol className="space-y-2 text-sm">
+                        {draft.thread.map((tweet, index) => (
+                          <li key={`${draft.platform}-${draft.locale}-${index}`} className="rounded bg-surface-alt p-2">
+                            <span className="mr-2 text-xs text-muted-foreground">{index + 1}/</span>
+                            {tweet}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                   {draft.localisation === 'hook' && (
                     <p className="text-xs text-muted-foreground">
                       Local hook + English body. Translate the body by hand if the post is worth it.
@@ -884,7 +1045,53 @@ export default function GrowthPage() {
               value={rate(report.data?.totals.click_rate ?? null)}
               hint={`was ${rate(report.data?.previous_totals.click_rate ?? null)}`}
             />
+            <StatBox label="Saves" value={formatNumber(report.data?.totals.saves ?? 0)} />
+            <StatBox label="Shares" value={formatNumber(report.data?.totals.shares ?? 0)} />
+            <StatBox label="Profile visits" value={formatNumber(report.data?.totals.profile_visits ?? 0)} />
+            <StatBox label="Signups" value={formatNumber(report.data?.totals.signups ?? 0)} />
           </div>
+
+          {(report.data?.kpi_targets.length ?? 0) > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Targets for this campaign
+              </p>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>KPI</TableHead>
+                      <TableHead className="text-right">Target</TableHead>
+                      <TableHead className="text-right">Actual</TableHead>
+                      <TableHead className="text-right">Progress</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.data?.kpi_targets.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.metric_label}</TableCell>
+                        <TableCell className="text-right">
+                          {isPercentMetric(row.metric)
+                            ? `${(row.target * 100).toFixed(1)}%`
+                            : formatNumber(row.target)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.actual == null
+                            ? '—'
+                            : isPercentMetric(row.metric)
+                              ? `${(row.actual * 100).toFixed(1)}%`
+                              : formatNumber(row.actual)}
+                        </TableCell>
+                        <TableCell className={row.met ? 'text-right font-medium text-success' : 'text-right'}>
+                          {row.progress == null ? '—' : `${(row.progress * 100).toFixed(0)}%`}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
 
           {report.data?.by_platform.length ? (
             <div className="overflow-x-auto">
@@ -923,10 +1130,18 @@ export default function GrowthPage() {
             </p>
           )}
 
-          <div className="grid gap-4 border-t border-border pt-4 lg:grid-cols-2">
+          <div className="grid gap-4 border-t border-border pt-4 lg:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">By card type</p>
               <BreakdownTable rows={report.data?.by_kind ?? []} group="kind" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">By format</p>
+              <BreakdownTable rows={report.data?.by_format ?? []} group="format" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">By language</p>
+              <BreakdownTable rows={report.data?.by_locale ?? []} group="locale" />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">By metric</p>
@@ -934,7 +1149,7 @@ export default function GrowthPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-6">
+          <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-3 lg:grid-cols-4">
             <Field label="Platform">
               <Select value={logPlatform} onValueChange={setLogPlatform}>
                 <SelectTrigger>
@@ -960,7 +1175,15 @@ export default function GrowthPage() {
                 placeholder="12000"
               />
             </Field>
-            <Field label="Engagements">
+            <Field label="Reach" hint="Optional, where the platform reports it.">
+              <Input
+                inputMode="numeric"
+                value={logReach}
+                onChange={(event) => setLogReach(event.target.value)}
+                placeholder="9000"
+              />
+            </Field>
+            <Field label="Engagements" hint="Likes + upvotes + saves + shares.">
               <Input
                 inputMode="numeric"
                 value={logEngagements}
@@ -968,7 +1191,31 @@ export default function GrowthPage() {
                 placeholder="480"
               />
             </Field>
-            <Field label="Clicks">
+            <Field label="Saves">
+              <Input
+                inputMode="numeric"
+                value={logSaves}
+                onChange={(event) => setLogSaves(event.target.value)}
+                placeholder="64"
+              />
+            </Field>
+            <Field label="Shares">
+              <Input
+                inputMode="numeric"
+                value={logShares}
+                onChange={(event) => setLogShares(event.target.value)}
+                placeholder="41"
+              />
+            </Field>
+            <Field label="Profile visits">
+              <Input
+                inputMode="numeric"
+                value={logProfileVisits}
+                onChange={(event) => setLogProfileVisits(event.target.value)}
+                placeholder="120"
+              />
+            </Field>
+            <Field label="Link clicks">
               <Input
                 inputMode="numeric"
                 value={logClicks}
@@ -976,11 +1223,30 @@ export default function GrowthPage() {
                 placeholder="210"
               />
             </Field>
+            <Field label="Signups">
+              <Input
+                inputMode="numeric"
+                value={logSignups}
+                onChange={(event) => setLogSignups(event.target.value)}
+                placeholder="12"
+              />
+            </Field>
+            <Field label="Reddit upvote" hint="Percent, e.g. 92.">
+              <Input
+                inputMode="decimal"
+                value={logUpvoteRatio}
+                onChange={(event) => setLogUpvoteRatio(event.target.value)}
+                placeholder="92"
+              />
+            </Field>
+            <Field label="UTM content" hint="Which asset, e.g. carousel_el.">
+              <Input value={logContent} onChange={(event) => setLogContent(event.target.value)} placeholder="carousel_el" />
+            </Field>
             <Field label="Link">
               <Input value={logUrl} onChange={(event) => setLogUrl(event.target.value)} placeholder="https://…" />
             </Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-4">
             <Field label="Card type" hint="Optional — feeds the by-type ranking above.">
               <Select value={logKind} onValueChange={setLogKind}>
                 <SelectTrigger>
@@ -989,6 +1255,36 @@ export default function GrowthPage() {
                 <SelectContent>
                   <SelectItem value={NONE}>Not recorded</SelectItem>
                   {data.kinds.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Format">
+              <Select value={logFormat} onValueChange={setLogFormat}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Not recorded</SelectItem>
+                  {data.content_formats.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Language">
+              <Select value={logLocale} onValueChange={setLogLocale}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Not recorded</SelectItem>
+                  {data.content_locales.map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
@@ -1101,6 +1397,62 @@ export default function GrowthPage() {
                 </Table>
               </div>
 
+              {((traffic.data.summary.by_campaign?.length ?? 0) > 0 ||
+                (traffic.data.summary.by_content?.length ?? 0) > 0) && (
+                <div className="grid gap-4 border-t border-border pt-4 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                      By UTM campaign
+                    </p>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Campaign</TableHead>
+                            <TableHead>Source</TableHead>
+                            <TableHead className="text-right">Sessions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {traffic.data.summary.by_campaign.map((row) => (
+                            <TableRow key={`${row.campaign}-${row.source}`}>
+                              <TableCell className="font-mono text-xs">{row.campaign || '—'}</TableCell>
+                              <TableCell>{row.source}</TableCell>
+                              <TableCell className="text-right">{formatNumber(row.sessions)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                      By UTM content
+                    </p>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Content</TableHead>
+                            <TableHead>Source</TableHead>
+                            <TableHead className="text-right">Sessions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {traffic.data.summary.by_content.map((row) => (
+                            <TableRow key={`${row.content}-${row.source}`}>
+                              <TableCell className="font-mono text-xs">{row.content || '—'}</TableCell>
+                              <TableCell>{row.source}</TableCell>
+                              <TableCell className="text-right">{formatNumber(row.sessions)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {traffic.data.last_synced_at && (
                 <p className="text-xs text-muted-foreground">
                   Last synced {formatDate(traffic.data.last_synced_at)}
@@ -1112,8 +1464,207 @@ export default function GrowthPage() {
       </Card>
 
       <Card>
+        <CardHeader className="flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle>7. Google organic search</CardTitle>
+            <CardDescription>
+              Search Console clicks, impressions and queries for the same window. This is assisted
+              search, not campaign attribution: Google does not expose UTM values here.
+            </CardDescription>
+          </div>
+          {data.can_sync && search?.configured && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => syncSearchConsole.mutate(reportDays)}
+              disabled={syncSearchConsole.isPending}
+            >
+              {syncSearchConsole.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              Sync Search Console
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!search?.configured && (
+            <Alert variant="info" title="Google Search Console is not configured">
+              Add the service-account JSON and the exact Search Console property in Settings - API
+              keys. The service account needs read access to that property. Any stored snapshots
+              are still shown below.
+            </Alert>
+          )}
+
+          {search?.configured && search.totals.clicks + search.totals.impressions === 0 && (
+            <Alert variant="info" title="No Search Console rows imported yet">
+              {data.can_sync
+                ? `Press "Sync Search Console" to import the last ${reportDays} days.`
+                : 'Ask an administrator to run manage.py sync_google --search-console-only on the server.'}
+            </Alert>
+          )}
+
+          {search && campaignSearch && (search.configured || campaignSearch.totals.impressions > 0) && (
+            <div className="space-y-3 rounded-field border border-border bg-surface-alt p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    Assisted search for this campaign
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Matched by the pages this campaign linked to, not by UTM. Campaign window:{' '}
+                    {formatDate(campaignSearch.window.start)} -{' '}
+                    {formatDate(campaignSearch.window.end)}.
+                  </p>
+                </div>
+                <p className="max-w-full truncate font-mono text-xs text-muted-foreground">
+                  {campaignSearch.pages.length ? campaignSearch.pages.join(', ') : 'No linked pages'}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatBox label="Clicks" value={formatNumber(campaignSearch.totals.clicks)} />
+                <StatBox
+                  label="Impressions"
+                  value={formatNumber(campaignSearch.totals.impressions)}
+                />
+                <StatBox label="CTR" value={rate(campaignSearch.totals.ctr)} />
+                <StatBox
+                  label="Avg position"
+                  value={campaignSearch.totals.position.toFixed(1)}
+                  hint="Impression-weighted"
+                />
+              </div>
+              {campaignSearch.warning && (
+                <Alert variant="info" title="Page matching needs a landing path">
+                  {campaignSearch.warning}
+                </Alert>
+              )}
+              {campaignSearch.matched && campaignSearch.by_page.length > 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Page</TableHead>
+                        <TableHead className="text-right">Clicks</TableHead>
+                        <TableHead className="text-right">Impressions</TableHead>
+                        <TableHead className="text-right">CTR</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {campaignSearch.by_page.map((row) => (
+                        <TableRow key={row.page_path}>
+                          <TableCell className="font-mono text-xs">{row.page_path}</TableCell>
+                          <TableCell className="text-right">{formatNumber(row.clicks)}</TableCell>
+                          <TableCell className="text-right">
+                            {formatNumber(row.impressions)}
+                          </TableCell>
+                          <TableCell className="text-right">{rate(row.ctr)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {search && (search.configured || search.totals.impressions > 0) && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatBox
+                  label="Site search clicks"
+                  value={formatNumber(search.totals.clicks)}
+                  hint={`${formatNumber(search.previous_totals.clicks)} before`}
+                />
+                <StatBox
+                  label="Site impressions"
+                  value={formatNumber(search.totals.impressions)}
+                  hint={`${formatNumber(search.previous_totals.impressions)} before`}
+                />
+                <StatBox
+                  label="Site CTR"
+                  value={rate(search.totals.ctr)}
+                  hint={`was ${rate(search.previous_totals.ctr)}`}
+                />
+                <StatBox
+                  label="Avg position"
+                  value={search.totals.position.toFixed(1)}
+                  hint="Impression-weighted"
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    Top search pages
+                  </p>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Page</TableHead>
+                          <TableHead className="text-right">Clicks</TableHead>
+                          <TableHead className="text-right">Impr.</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {search.by_page.map((row) => (
+                          <TableRow key={row.page_path}>
+                            <TableCell className="max-w-[16rem] truncate font-mono text-xs">
+                              {row.page_path}
+                            </TableCell>
+                            <TableCell className="text-right">{formatNumber(row.clicks)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(row.impressions)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    Top search queries
+                  </p>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Query</TableHead>
+                          <TableHead className="text-right">Clicks</TableHead>
+                          <TableHead className="text-right">Impr.</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {search.by_query.map((row) => (
+                          <TableRow key={row.query}>
+                            <TableCell className="max-w-[16rem] truncate">{row.query}</TableCell>
+                            <TableCell className="text-right">{formatNumber(row.clicks)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(row.impressions)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {search.site_url ? `Property ${search.site_url}. ` : ''}
+                {search.data_through
+                  ? `Data through ${formatDate(search.data_through)}. `
+                  : ''}
+                Google typically delays Search Console data by {search.data_lag_days}-3 days.
+                {search.last_synced_at ? ` Last synced ${formatDate(search.last_synced_at)}.` : ''}
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
-          <CardTitle>7. What to do next</CardTitle>
+          <CardTitle>8. What to do next</CardTitle>
           <CardDescription>
             Rules over the same numbers: what is leaking, what is worth repeating, what to stop.
           </CardDescription>

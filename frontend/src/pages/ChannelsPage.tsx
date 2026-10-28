@@ -29,9 +29,15 @@ const PAGE_SIZE = 20;
 const CHANNEL_TYPES = [
   { value: 'facebook', label: 'Facebook' },
   { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
   { value: 'tiktok', label: 'TikTok' },
-  { value: 'google', label: 'Google' },
+  { value: 'youtube', label: 'YouTube' },
   { value: 'x', label: 'X' },
+  { value: 'reddit', label: 'Reddit' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'newsletter', label: 'Newsletter' },
+  { value: 'google', label: 'Google' },
   { value: 'other', label: 'Other' },
 ] as const;
 

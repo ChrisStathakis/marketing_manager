@@ -1,13 +1,61 @@
 from django.contrib import admin
 
 from .models import (
+    Boost,
+    CardSet,
     GrowthExperiment,
+    HashtagSet,
     InstagramComment,
     InstagramTrackedPost,
+    KpiTarget,
+    Playbook,
+    PlaybookSlot,
     PostPerformance,
+    SearchConsoleSnapshot,
     StatCard,
     TrafficSnapshot,
 )
+
+
+class PlaybookSlotInline(admin.TabularInline):
+    model = PlaybookSlot
+    extra = 0
+    fields = ("order", "day_offset", "time", "platform", "format", "content_kind", "locales", "title_template", "is_task_only")
+    ordering = ("order",)
+
+
+@admin.register(Playbook)
+class PlaybookAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_seeded", "slot_count", "updated_at")
+    search_fields = ("name", "description")
+    inlines = [PlaybookSlotInline]
+
+    def slot_count(self, obj):
+        return obj.slots.count()
+
+
+@admin.register(CardSet)
+class CardSetAdmin(admin.ModelAdmin):
+    list_display = ("title", "kind", "format", "campaign", "created_at")
+    list_filter = ("kind", "format")
+
+
+@admin.register(KpiTarget)
+class KpiTargetAdmin(admin.ModelAdmin):
+    list_display = ("campaign", "metric", "target", "window_start", "window_end")
+    list_filter = ("metric",)
+
+
+@admin.register(Boost)
+class BoostAdmin(admin.ModelAdmin):
+    list_display = ("platform", "status", "campaign", "total_budget", "start_date", "end_date")
+    list_filter = ("platform", "status")
+
+
+@admin.register(HashtagSet)
+class HashtagSetAdmin(admin.ModelAdmin):
+    list_display = ("name", "locale", "platform", "is_default")
+    list_filter = ("locale", "platform", "is_default")
 
 
 @admin.register(StatCard)
@@ -38,6 +86,14 @@ class TrafficSnapshotAdmin(admin.ModelAdmin):
     list_filter = ("source", "medium")
     date_hierarchy = "date"
     search_fields = ("source", "medium")
+
+
+@admin.register(SearchConsoleSnapshot)
+class SearchConsoleSnapshotAdmin(admin.ModelAdmin):
+    list_display = ("date", "site_url", "scope", "page_path", "query", "clicks", "impressions")
+    list_filter = ("scope", "site_url")
+    date_hierarchy = "date"
+    search_fields = ("page_path", "page_url", "query")
 
 
 class InstagramCommentInline(admin.TabularInline):

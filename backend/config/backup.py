@@ -52,6 +52,7 @@ BUSINESS_MODELS = [
     "growth.PostPerformance",
     "growth.GrowthExperiment",
     "growth.TrafficSnapshot",
+    "growth.SearchConsoleSnapshot",
 ]
 
 

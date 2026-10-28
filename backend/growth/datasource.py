@@ -30,6 +30,7 @@ USER_AGENT = "catchandstats-growth/1.0 (+https://catchandstats.com)"
 PAGE_SIZE = 500
 MAX_PAGES = 40
 CACHE_VERSION = 3
+TEAM_CACHE_VERSION = 1
 
 #: HTTP statuses worth another attempt. Everything else in the 4xx range is a
 #: bug on our side (bad parameter, bad season) and retrying only wastes time.
@@ -314,6 +315,219 @@ class CatchAndStatsClient:
         _write_cache(key, table)
         return table
 
+    # -- team-level advanced table -----------------------------------------
+    def _team_reference_rows(self, target: dict, refresh: bool = False) -> list[dict]:
+        key = f"team-season-{target['id']}-v{TEAM_CACHE_VERSION}.json"
+        if not refresh:
+            cached, _ = _read_cache(key, self.cache_ttl)
+            if cached and isinstance(cached.get("rows"), list):
+                return cached["rows"]
+        try:
+            rows = self.paginate("/teams/team-season/list/", season=target["id"])
+        except DatasourceError as exc:
+            fallback, _ = _read_cache(key, 0)
+            if fallback and isinstance(fallback.get("rows"), list):
+                self.warnings.append("the team list came from the cache")
+                return fallback["rows"]
+            raise exc
+        _write_cache(
+            key,
+            {
+                "rows": rows,
+                "fetched_at": datetime.now(dt_timezone.utc).isoformat(timespec="seconds"),
+            },
+        )
+        return rows
+
+    def _team_game_rows(self, target: dict, refresh: bool = False) -> list[dict]:
+        key = f"team-games-{target['id']}-v{TEAM_CACHE_VERSION}.json"
+        if not refresh:
+            cached, _ = _read_cache(key, self.cache_ttl)
+            if cached and isinstance(cached.get("rows"), list):
+                return cached["rows"]
+        try:
+            rows = self.paginate(
+                "/games/game-team-list/",
+                season=target["id"],
+                game__is_played="true",
+            )
+        except DatasourceError as exc:
+            fallback, _ = _read_cache(key, 0)
+            if fallback and isinstance(fallback.get("rows"), list):
+                self.warnings.append("the team game log came from the cache")
+                return fallback["rows"]
+            raise exc
+        _write_cache(
+            key,
+            {
+                "rows": rows,
+                "fetched_at": datetime.now(dt_timezone.utc).isoformat(timespec="seconds"),
+            },
+        )
+        return rows
+
+    @staticmethod
+    def _mean(values: list[float]) -> float | None:
+        usable = [value for value in values if value is not None]
+        return sum(usable) / len(usable) if usable else None
+
+    def team_advanced_table(self, season: str | int | None = None, refresh: bool = False) -> dict:
+        """Team four factors, record and ratings, computed from played games.
+
+        The public team-season endpoint carries ORtg/DRtg/Pace, but not wins,
+        TS%, eFG% or TOV%. The per-game team rows carry all of them. The site's
+        own Team Advanced page averages the per-game ratings (not the
+        possession-weighted season figure), so this does the same: that is what
+        makes the numbers match the report the plan was built from.
+        """
+        target = self.resolve_season(self.seasons(), season)
+        key = f"team-advanced-{target['id']}-v{TEAM_CACHE_VERSION}.json"
+        if not refresh:
+            cached, _ = _read_cache(key, self.cache_ttl)
+            if cached:
+                cached.setdefault("stale", False)
+                cached.setdefault("warning", "")
+                return cached
+
+        try:
+            references = self._team_reference_rows(target, refresh=refresh)
+            games = self._team_game_rows(target, refresh=refresh)
+        except DatasourceError as exc:
+            fallback, _ = _read_cache(key, 0)
+            if fallback:
+                fallback = dict(fallback)
+                fallback["stale"] = True
+                fallback["warning"] = (
+                    f"The public data API is not answering ({exc}). "
+                    f"Showing the cached team table from {fallback.get('fetched_at', 'an earlier run')}."
+                )
+                return fallback
+            raise
+
+        references_by_id = {str(row.get("team")): row for row in references}
+        buckets: dict[str, dict] = {}
+
+        for row in games:
+            team_id = str(row.get("team") or "")
+            if not team_id:
+                continue
+            points = as_float(row.get("standingScore"))
+            allowed = as_float(row.get("allowed_points"))
+            # Unplayed fixtures come back as 0-0 and still carry win_status=true.
+            if points is None or allowed is None or (points <= 0 and allowed <= 0):
+                continue
+            bucket = buckets.setdefault(
+                team_id,
+                {
+                    "team_id": row.get("team"),
+                    "team_title": row.get("team_name") or "",
+                    "games": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "points": 0.0,
+                    "fga": 0.0,
+                    "fta": 0.0,
+                    "fgm": 0.0,
+                    "fgm3": 0.0,
+                    "turnovers": 0.0,
+                    "ortg": [],
+                    "drtg": [],
+                    "pace": [],
+                    "oreb_pct": [],
+                },
+            )
+            bucket["games"] += 1
+            if row.get("win_status"):
+                bucket["wins"] += 1
+            else:
+                bucket["losses"] += 1
+            bucket["points"] += points
+            bucket["fga"] += as_float(row.get("field_goals_attempted_total")) or 0.0
+            bucket["fta"] += as_float(row.get("free_throws_attempted")) or 0.0
+            bucket["fgm"] += as_float(row.get("field_goals_made_total")) or 0.0
+            bucket["fgm3"] += as_float(row.get("field_goals_made_three")) or 0.0
+            bucket["turnovers"] += as_float(row.get("turnovers")) or 0.0
+            for source, field in (("ortg", "offensive_rating"), ("drtg", "defensive_rating"), ("pace", "pace")):
+                value = as_float(row.get(field))
+                if value is not None and value > 0:
+                    bucket[source].append(value)
+            orb = as_float(row.get("orb_pct"))
+            if orb is not None:
+                bucket["oreb_pct"].append(orb)
+
+        teams = []
+        for team_id, bucket in buckets.items():
+            reference = references_by_id.get(team_id, {})
+            name = reference.get("team_title") or bucket.get("team_title") or f"Team {team_id}"
+            fga, fta, tov = bucket["fga"], bucket["fta"], bucket["turnovers"]
+            possessions = fga + 0.44 * fta
+            ts_pct = bucket["points"] / (2 * possessions) if possessions else None
+            efg_pct = (bucket["fgm"] + 0.5 * bucket["fgm3"]) / fga if fga else None
+            tov_pct = tov / (possessions + tov) if possessions + tov else None
+            ortg = self._mean(bucket["ortg"])
+            drtg = self._mean(bucket["drtg"])
+            if ortg is None:
+                ortg = as_float(reference.get("offensive_rating"))
+            if drtg is None:
+                drtg = as_float(reference.get("defensive_rating"))
+            teams.append(
+                {
+                    "team_id": bucket.get("team_id"),
+                    "team_title": name,
+                    "season_title": target.get("title"),
+                    "games": bucket["games"],
+                    "wins": bucket["wins"],
+                    "losses": bucket["losses"],
+                    "record": f"{bucket['wins']}-{bucket['losses']}",
+                    "offensive_rating": ortg,
+                    "defensive_rating": drtg,
+                    "net_rating": round(ortg - drtg, 2) if ortg is not None and drtg is not None else None,
+                    "avg_pace": self._mean(bucket["pace"]),
+                    "ts_pct": ts_pct,
+                    "efg_pct": efg_pct,
+                    "tov_pct": tov_pct,
+                    "oreb_pct": self._mean(bucket["oreb_pct"]),
+                }
+            )
+
+        teams.sort(
+            key=lambda team: (
+                team["wins"],
+                team["net_rating"] if team["net_rating"] is not None else -999,
+            ),
+            reverse=True,
+        )
+        table = {
+            "season": {
+                "id": target.get("id"),
+                "season_id": target.get("season_id"),
+                "title": target.get("title"),
+            },
+            "teams": teams,
+            "fetched_at": datetime.now(dt_timezone.utc).isoformat(timespec="seconds"),
+            "source": self.base_url,
+            "stale": False,
+            "warning": "; ".join(self.warnings),
+        }
+        _write_cache(key, table)
+        return table
+
+    def previous_team_advanced_table(self, season: str | int | None = None) -> dict:
+        """The season before the selected one, for the "then vs now" notes."""
+        season_rows = sorted(self.seasons(), key=lambda row: row.get("id") or 0, reverse=True)
+        current = self.resolve_season(season_rows, season)
+        older = [row for row in season_rows if (row.get("id") or 0) < (current.get("id") or 0)]
+        if not older:
+            return {
+                "season": None,
+                "teams": [],
+                "fetched_at": None,
+                "source": self.base_url,
+                "stale": False,
+                "warning": "No previous season is available.",
+            }
+        return self.team_advanced_table(older[0]["id"])
+
     @staticmethod
     def _normalise(row: dict) -> dict:
         metrics = {}
@@ -337,6 +551,32 @@ class CatchAndStatsClient:
 # -- module level helpers --------------------------------------------------
 def season_table(season: str | int | None = None, refresh: bool = False) -> dict:
     return CatchAndStatsClient().season_table(season=season, refresh=refresh)
+
+
+def team_advanced_table(season: str | int | None = None, refresh: bool = False) -> dict:
+    return CatchAndStatsClient().team_advanced_table(season=season, refresh=refresh)
+
+
+def previous_team_advanced_table(season: str | int | None = None) -> dict:
+    return CatchAndStatsClient().previous_team_advanced_table(season=season)
+
+
+def find_team(table: dict, team: str | int | None = None) -> dict | None:
+    """Find a team row by id, full name or a distinctive fragment."""
+    if team in (None, ""):
+        return None
+    needle = str(team).strip().lower()
+    for row in table.get("teams", []):
+        candidates = {
+            str(row.get("team_id")),
+            str(row.get("id")),
+            (row.get("team_title") or "").lower(),
+        }
+        if needle in candidates:
+            return row
+        if needle and needle in (row.get("team_title") or "").lower():
+            return row
+    return None
 
 
 def seasons(refresh: bool = False) -> list[dict]:

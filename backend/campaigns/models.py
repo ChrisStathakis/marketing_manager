@@ -22,9 +22,20 @@ class Campaign(models.Model):
     objective = models.TextField(blank=True)
     budget = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    playbook = models.ForeignKey(
+        "growth.Playbook", null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns"
+    )
+    round_label = models.CharField(max_length=120, blank=True)
+    locales = models.JSONField(default=list, blank=True)
+    platforms = models.JSONField(default=list, blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     utm_campaign = models.CharField(max_length=255, blank=True)
+    landing_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional site path used for campaign links, e.g. /team-advanced-stats.",
+    )
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

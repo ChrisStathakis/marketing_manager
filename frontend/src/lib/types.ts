@@ -6,9 +6,15 @@ export interface Campaign {
   objective: string;
   budget: string;
   status: CampaignStatus;
+  playbook: number | null;
+  playbook_name?: string;
+  round_label: string;
+  locales: string[];
+  platforms: string[];
   start_date: string | null;
   end_date: string | null;
   utm_campaign: string;
+  landing_path: string;
   owner: number | null;
   created_at: string;
   updated_at: string;
@@ -24,10 +30,23 @@ export interface Channel {
 
 export type ContentStatus = 'draft' | 'scheduled' | 'published';
 
+export interface ContentAsset {
+  id: number;
+  content_item: number;
+  kind: 'image' | 'video' | 'link' | 'other';
+  file: string;
+  file_url: string;
+  url: string;
+  position: number;
+  alt_text: string;
+  created_at: string;
+}
+
 export interface ContentItem {
   id: number;
   campaign: number;
   channel: number | null;
+  card_set: number | null;
   title: string;
   copy: string;
   asset_url: string;
@@ -35,8 +54,17 @@ export interface ContentItem {
   utm_source: string;
   utm_medium: string;
   utm_campaign: string;
+  utm_content: string;
+  locale: string;
+  locale_label?: string;
+  format: string;
+  format_label?: string;
+  content_kind: string;
+  thread: string[];
+  notes: string;
   publish_at: string | null;
   status: ContentStatus;
+  assets: ContentAsset[];
 }
 
 export interface DailyMetric {
@@ -253,12 +281,17 @@ export interface GrowthMeta {
   country_labels: Record<string, string>;
   kinds: [string, string][];
   formats: [string, string][];
+  content_formats: [string, string][];
+  playbook_platforms: [string, string][];
+  content_locales: [string, string][];
   sizes: Record<string, [number, number]>;
   platforms: [string, string][];
   log_platforms: [string, string][];
   locales: string[];
   full_locales: string[];
   metrics: GrowthMetric[];
+  kpi_metrics: [string, string][];
+  hashtag_sets: HashtagSet[];
   site_url: string;
   /** GA4 session source → studio platform, for reading the traffic table. */
   sources: Record<string, string>;
@@ -334,11 +367,18 @@ export interface CardRow {
   left?: string;
   right?: string;
   winner?: 'left' | 'right' | null;
+  rank?: number;
+  team?: string;
+  team_full?: string;
+  record?: string;
+  net?: string;
+  team_id?: number;
 }
 
 /** The numbers behind one card, as produced by the API and stored on save. */
 export interface CardSpec {
   kind: string;
+  layout?: 'table' | string;
   eyebrow?: string;
   title: string;
   subtitle?: string;
@@ -362,6 +402,7 @@ export interface CaptionDraft {
   length: number;
   within_limit: boolean;
   localisation: 'full' | 'hook';
+  thread?: string[];
 }
 
 export interface CaptionResponse {
@@ -373,6 +414,8 @@ export interface CaptionResponse {
 export interface GrowthStatCard {
   id: number;
   campaign: number | null;
+  card_set: number | null;
+  position: number;
   kind: string;
   format: string;
   title: string;
@@ -392,14 +435,27 @@ export interface PostPerformance {
   kind_label: string;
   metric_key: string;
   metric_label: string;
+  format: string;
+  format_label: string;
+  locale: string;
+  locale_label: string;
+  utm_content: string;
   url: string;
   posted_at: string | null;
   impressions: number;
+  reach: number;
   engagements: number;
+  saves: number;
+  shares: number;
   comments: number;
+  profile_visits: number;
   clicks: number;
+  signups: number;
+  upvote_ratio: number | null;
   engagement_rate: number | null;
   click_rate: number | null;
+  save_rate: number | null;
+  share_rate: number | null;
   notes: string;
   created_at: string;
 }
@@ -408,11 +464,19 @@ export interface PostPerformance {
 export interface GrowthStats {
   posts: number;
   impressions: number;
+  reach: number;
   engagements: number;
+  saves: number;
+  shares: number;
   comments: number;
+  profile_visits: number;
   clicks: number;
+  signups: number;
+  upvote_ratio: number | null;
   engagement_rate: number | null;
   click_rate: number | null;
+  save_rate: number | null;
+  share_rate: number | null;
 }
 
 export interface GrowthReportRow extends GrowthStats {
@@ -422,6 +486,8 @@ export interface GrowthReportRow extends GrowthStats {
   kind?: string;
   /** Set on the metric breakdown only. */
   metric?: string;
+  format?: string;
+  locale?: string;
   label: string;
   best_post?: PostPerformance | null;
 }
@@ -457,6 +523,15 @@ export interface GrowthTrafficSource {
   engagement_rate: number | null;
 }
 
+export interface GrowthTrafficCampaign {
+  campaign?: string;
+  content?: string;
+  source: string;
+  sessions: number;
+  engaged_sessions: number;
+  engagement_rate: number | null;
+}
+
 export interface GrowthTrafficSummary {
   totals: {
     sessions: number;
@@ -467,6 +542,8 @@ export interface GrowthTrafficSummary {
   };
   by_platform: GrowthTrafficPlatform[];
   by_source: GrowthTrafficSource[];
+  by_campaign: GrowthTrafficCampaign[];
+  by_content: GrowthTrafficCampaign[];
 }
 
 export interface GrowthTrafficSnapshot {
@@ -474,6 +551,8 @@ export interface GrowthTrafficSnapshot {
   date: string;
   source: string;
   medium: string;
+  campaign: string;
+  content: string;
   platform: string | null;
   sessions: number;
   engaged_sessions: number;
@@ -490,6 +569,63 @@ export interface GrowthTrafficResponse {
   results: GrowthTrafficSnapshot[];
   configured: boolean;
   can_sync: boolean;
+  last_synced_at: string | null;
+}
+
+export interface GrowthSearchTotals {
+  clicks: number;
+  impressions: number;
+  /** Fraction, e.g. 0.052 for 5.2%. */
+  ctr: number;
+  /** Impression-weighted average position. */
+  position: number;
+}
+
+export interface GrowthSearchRow extends GrowthSearchTotals {
+  page_path?: string;
+  page_url?: string;
+  query?: string;
+}
+
+export interface GrowthSearchCampaign {
+  window: { start: string; end: string };
+  pages: string[];
+  totals: GrowthSearchTotals;
+  by_page: GrowthSearchRow[];
+  matched: boolean;
+  warning: string;
+}
+
+/**
+ * Search Console has no UTM dimension. When a campaign is selected, its
+ * section is *assisted* organic search for the pages the campaign linked to.
+ */
+export interface GrowthSearchConsoleReport {
+  window: { start: string; end: string };
+  previous_window: { start: string; end: string };
+  totals: GrowthSearchTotals;
+  previous_totals: GrowthSearchTotals;
+  by_page: GrowthSearchRow[];
+  by_query: GrowthSearchRow[];
+  campaign: GrowthSearchCampaign | null;
+  data_through: string | null;
+  data_lag_days: number;
+  configured: boolean;
+  site_url: string;
+  last_synced_at: string | null;
+}
+
+export interface GrowthSearchSyncResult {
+  created: number;
+  updated: number;
+  rows: number;
+  pages: number;
+  queries: number;
+  clicks: number;
+  impressions: number;
+  start: string | null;
+  end: string | null;
+  site_url: string;
   last_synced_at: string | null;
 }
 
@@ -523,18 +659,179 @@ export interface GrowthInsights {
   next_cards: GrowthNextCard[];
 }
 
+export interface KpiTarget {
+  id: number;
+  campaign: number;
+  metric: string;
+  metric_label: string;
+  target: number;
+  window_start: string | null;
+  window_end: string | null;
+  notes: string;
+  created_at: string;
+}
+
+export interface KpiTargetProgress extends KpiTarget {
+  actual: number | null;
+  progress: number | null;
+  remaining: number | null;
+  met: boolean;
+}
+
+export interface HashtagSet {
+  id: number;
+  name: string;
+  locale: string;
+  platform: string;
+  tags: string[];
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface Boost {
+  id: number;
+  campaign: number | null;
+  content_item: number | null;
+  platform: string;
+  platform_label: string;
+  status: 'planned' | 'running' | 'done' | 'cancelled';
+  status_label: string;
+  objective: string;
+  daily_budget: string;
+  total_budget: string;
+  start_date: string | null;
+  end_date: string | null;
+  targeting: Record<string, unknown>;
+  cpa_target: string | null;
+  notes: string;
+  created_at: string;
+}
+
+export interface PlaybookSlot {
+  id?: number;
+  playbook?: number;
+  order: number;
+  day_offset: number;
+  time: string;
+  platform: string;
+  format: string;
+  content_kind: string;
+  locales: string[];
+  title_template: string;
+  brief: string;
+  utm_content_template: string;
+  asset_required: boolean;
+  paid_budget: string;
+  is_task_only: boolean;
+  notes: string;
+}
+
+export interface Playbook {
+  id: number;
+  name: string;
+  description: string;
+  default_locales: string[];
+  default_platforms: string[];
+  is_seeded: boolean;
+  slot_count: number;
+  slots: PlaybookSlot[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaybookPreviewItem {
+  title: string;
+  kind: string;
+  platform: string;
+  platform_label: string;
+  format: string;
+  locale: string;
+  publish_at: string;
+  link: string;
+  utm_content: string;
+  asset_required: boolean;
+  paid_budget: number;
+  is_task_only: boolean;
+  channel: string;
+  missing_channel: boolean;
+}
+
+export interface PlaybookPreview {
+  playbook: Playbook;
+  start_date: string;
+  end_date: string;
+  round_label: string;
+  locales: string[];
+  platforms: string[];
+  landing_path: string;
+  count: number;
+  by_platform: { platform: string; label: string; count: number }[];
+  by_locale: Record<string, number>;
+  items: PlaybookPreviewItem[];
+  missing_channels: string[];
+}
+
+export interface PlaybookRunResult {
+  campaign: Campaign;
+  created: number;
+  skipped: number;
+  tasks: number;
+  task_only: number;
+  missing_channels: string[];
+  targets_created: number;
+  boosts_created: number;
+  start_date: string;
+  end_date: string;
+  items: ContentItem[];
+}
+
+export interface CardSet {
+  id: number;
+  campaign: number | null;
+  kind: string;
+  format: string;
+  title: string;
+  subtitle: string;
+  payload: Record<string, unknown>;
+  slides: GrowthStatCard[];
+  created_at: string;
+}
+
+export interface GrowthTeam {
+  team_id: number;
+  team_title: string;
+  season_title: string;
+  games: number;
+  wins: number;
+  losses: number;
+  record: string;
+  offensive_rating: number | null;
+  defensive_rating: number | null;
+  net_rating: number | null;
+  avg_pace: number | null;
+  ts_pct: number | null;
+  efg_pct: number | null;
+  tov_pct: number | null;
+  oreb_pct: number | null;
+}
+
 export interface GrowthReport {
   days: number;
   since: string;
   previous_since: string;
+  campaign: Campaign | null;
   totals: GrowthStats;
   previous_totals: GrowthStats;
+  kpi_targets: KpiTargetProgress[];
   by_platform: GrowthReportRow[];
   by_kind: GrowthReportRow[];
+  by_format: GrowthReportRow[];
+  by_locale: GrowthReportRow[];
   by_metric: GrowthReportRow[];
   trend: GrowthTrendRow[];
   traffic: GrowthTrafficSummary;
   traffic_configured: boolean;
+  search_console: GrowthSearchConsoleReport;
   can_sync: boolean;
   best_posts: PostPerformance[];
 }

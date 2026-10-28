@@ -82,6 +82,54 @@ Sync results are recorded on the credential row (`last_synced_at`, `last_sync_er
 in Settings. A key coming purely from `backend/.env` has no row to record against, so those two
 fields stay empty.
 
+## Google Search Console (`GOOGLE_SEARCH_CONSOLE_CREDENTIALS`, `GOOGLE_SEARCH_CONSOLE_SITE_URL`)
+
+| | |
+| --- | --- |
+| Powers | Google organic search clicks, impressions, CTR, position, pages and queries |
+| Endpoints | `POST /api/integrations/google-search-console/sync/`, `GET /api/growth/search-console/` |
+| Env fallbacks | `GOOGLE_SEARCH_CONSOLE_CREDENTIALS` (the whole key file, as JSON), `GOOGLE_SEARCH_CONSOLE_SITE_URL` |
+
+Search Console shares the service-account authentication used by GA4, with the
+`webmasters.readonly` scope. You can reuse the GA4 service account.
+
+Steps:
+
+1. In Google Cloud, enable the **Google Search Console API** (the GA4 project is fine).
+2. Use the GA4 service account, or create a new one and download a **JSON key**.
+3. In Search Console, open **Settings -> Users and permissions** and add the service-account
+   `client_email` as **Full** or **Restricted** user.
+4. In Settings -> API keys, paste the JSON and the **exact property string**:
+   `sc-domain:catchandstats.com` for a Domain property, or
+   `https://www.catchandstats.com/` for a URL-prefix property.
+5. Click **Sync now**, or run `manage.py sync_google --search-console-only`.
+
+What a sync stores:
+
+- `total` rows per day for the whole property.
+- `page` rows per day for the top pages (up to 25k per request, capped at 50k per scope).
+- `query` rows per day for the top queries.
+- Re-running is idempotent per `(date, site_url, scope, page_path, query)`.
+
+**Campaign attribution is assisted, not causal.** Search Console has no UTM or campaign
+dimension. When a campaign is selected, the growth report matches Search Console pages to the
+canonical paths of the campaign's content links. A campaign whose links all point at `/` can
+only show homepage search, so set a **landing path** on the campaign or playbook to get
+page-level data. Use GA4's `sessionCampaignName` for true UTM attribution.
+
+Google normally delays Search Console data by 2-3 days; the report shows the newest date that
+was actually imported rather than implying the window is complete.
+
+For a local demo without Google credentials, `manage.py seed_search_console --days 30`
+writes deterministic snapshots for the sample property. Re-running is idempotent.
+
+Cron example (after GA4, daily):
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe manage.py sync_google --days 30 --organic --search-console
+```
+
 ## Instagram (`INSTAGRAM_SESSIONID`, `INSTAGRAM_USERNAME`, `INSTAGRAM_PROXY`)
 
 | | |

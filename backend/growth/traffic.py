@@ -5,7 +5,9 @@ the report can only rank posts against each other, not against reality — a pos
 with 40 000 impressions and no sessions is not a win.
 
 Reuses the same Google Analytics integration as the revenue sync (Settings →
-API keys), and is idempotent per ``(date, source, medium)``.
+API keys), and is idempotent per ``(date, source, medium, campaign, content)``.
+The campaign/content columns are the UTM values stamped on playbook links, so a
+post can be joined to the sessions it actually produced.
 """
 
 from __future__ import annotations
@@ -96,6 +98,8 @@ def persist_traffic(rows: list[dict], result: TrafficResult) -> TrafficResult:
                 date=day,
                 source=row["source"],
                 medium=row["medium"],
+                campaign=(row.get("campaign") or "")[:160],
+                content=(row.get("content") or "")[:160],
                 defaults={
                     "sessions": row["sessions"],
                     "engaged_sessions": row["engaged_sessions"],

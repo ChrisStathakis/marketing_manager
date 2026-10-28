@@ -3,6 +3,36 @@
 The studio makes the assets. This page is the plan for using them: which community, what
 cadence, what to write, and what will get the domain banned.
 
+## Start here: the date-free playbook
+
+The 14-day Top 8 plan lives in **Growth → Playbooks** as `Top 8 launch — 14 days`. It is a
+template, not a calendar: every slot stores a *day offset*, a time, a platform, a format,
+locales and a UTM content value. Running it asks for a start date, a round label and an
+optional **landing path** (for example `/team-advanced-stats`); the path makes campaign links
+point at a real page instead of the homepage, which also lets Search Console match the
+campaign's assisted-search rows. The run then creates:
+
+- a **new campaign** (`playbook`, `round_label`, `start_date`, `utm_campaign`),
+- one scheduled `ContentItem` per platform × locale,
+- a task per post,
+- the campaign's KPI targets (target **and** actual, not only actual).
+
+There are no hardcoded dates in the template. Run it again next round and the whole
+schedule shifts. The seeded copy is refreshed with:
+
+```bash
+python manage.py seed_playbook --force
+```
+
+Preview is a dry run: it shows every date, UTM link and missing channel without writing
+anything. The same editor lets you add, remove, reorder, duplicate and change slots; a new
+playbook starts empty so you can build a different series without touching the seed.
+
+The Top 8 hero asset is built with **Build Top 8 carousel**: cover + one four-factors slide
+per team (record, net rating, last season) + CTA, rendered as ordered PNGs and downloadable
+as a ZIP. Team ratings are the mean of per-game ORtg/DRtg (matching the public Team
+Advanced page), not the possession-weighted season aggregate.
+
 !!! warning "Two rules decide whether this works"
     1. **No bots, no auto-posting.** Everything here is a human pressing send.
     2. **Lead with the number, not the site.** A post that would still be useful with the
@@ -189,17 +219,21 @@ The plan only compounds if something reads the numbers back. The studio does tha
 job is to sit through it once a week:
 
 1. **Sync GA4** in section 6 (or `manage.py sync_google --organic` on the server). Sessions per
-   source are what separate "the post travelled" from "the post landed".
-2. **Log the week's posts** — platform, card type, metric, impressions, engagements, clicks.
-   The card type and metric fields are what make the next two steps possible.
+   source are what separate "the post travelled" from "the post landed". Then **Sync Search
+   Console** in section 7 (or `manage.py sync_google --search-console-only`) to see whether the
+   same pages gained Google visibility. Search data is assisted, not UTM attribution.
+2. **Log the week's posts** — platform, card type, metric, format, language, impressions,
+   reach, engagements, saves, shares, profile visits, clicks, signups and Reddit's upvote
+   ratio. The card type, format, language and metric fields are what make the next two steps
+   possible; the plan's KPI targets use the rest.
 3. **Read section 5** top to bottom: the *vs before* column first (is the click rate rising?),
    then the by-card-type and by-metric tables.
-4. **Read section 7** — every red item is a leak (a link that never produced a session, reach
+4. **Read section 8** — every red item is a leak (a link that never produced a session, reach
    without conversion); every green one is a format worth repeating. Press **Use** on a
    suggestion to draft that card immediately.
 5. **Write one line** in the experiment log: what you tried, what happened, keep or kill.
 
-If section 7 has nothing to say, there is not enough data yet — log more posts rather than
+If section 8 has nothing to say, there is not enough data yet — log more posts rather than
 changing the plan.
 
 ## What success looks like (not follower counts)
@@ -222,7 +256,7 @@ that did not.
 | Reddit shadowban or sub ban | 9:1 ratio, no links until week 5, images only, no cross-posting |
 | Data noise early in the season (6 games played) | Cards carry "after N games"; implausible values show "—" |
 | Burnout at three hours a week | The studio fills the calendar; skip the TikTok step first if time runs out |
-| Posting the wrong thing for weeks | The Sunday review loop: the report's by-metric table and section 7 both name what to stop |
+| Posting the wrong thing for weeks | The Sunday review loop: the report's by-metric table and section 8 both name what to stop |
 | Chasing followers instead of visits | Only clicks, click rate and GA4 sessions are on the scoreboard |
 | X account posting into the void | Reply to 5 bigger accounts in the niche daily during weeks 1–4 |
 | A metric gets challenged publicly | `/metrics-guide` explains every formula; link it in the reply, once |

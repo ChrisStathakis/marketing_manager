@@ -5,6 +5,7 @@ class Channel(models.Model):
     TYPE_CHOICES = [
         ("facebook", "Facebook"),
         ("instagram", "Instagram"),
+        ("linkedin", "LinkedIn"),
         ("tiktok", "TikTok"),
         ("youtube", "YouTube"),
         ("x", "X"),

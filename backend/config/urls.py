@@ -11,25 +11,32 @@ from channels.views import ChannelViewSet
 from config.backup_views import backup_database, backup_export, backup_restore
 from config.dashboard import health, public_config, summary
 from config.registration import RegisterView
-from content.views import ContentItemViewSet
-from google_sync.views import sync_google_analytics
+from content.views import ContentAssetViewSet, ContentItemViewSet
+from google_sync.views import sync_google_analytics, sync_google_search_console
 from growth.views import (
+    BoostViewSet,
     CaptionDraftView,
     CardPreviewView,
+    CardSetViewSet,
     GrowthExperimentViewSet,
     GrowthInsightsView,
     GrowthMetaView,
     GrowthPlayersView,
     GrowthReportView,
+    GrowthSearchConsoleView,
     GrowthSuggestView,
+    GrowthTeamsView,
     GrowthTrafficSyncView,
     GrowthTrafficView,
+    HashtagSetViewSet,
     InstagramAnalysisView,
     InstagramCommentListView,
     InstagramExportView,
     InstagramPostViewSet,
     InstagramTestView,
+    KpiTargetViewSet,
     PlanSeedView,
+    PlaybookViewSet,
     PostPerformanceViewSet,
     StatCardViewSet,
 )
@@ -43,6 +50,7 @@ router = DefaultRouter()
 router.register("campaigns", CampaignViewSet)
 router.register("channels", ChannelViewSet)
 router.register("content", ContentItemViewSet)
+router.register("content-assets", ContentAssetViewSet)
 router.register("spend", AdSpendViewSet)
 router.register("metrics", DailyMetricViewSet)
 router.register("tasks", TaskViewSet)
@@ -50,8 +58,13 @@ router.register("suggestions", SuggestionViewSet)
 router.register("products", ProductViewSet)
 router.register("orders", OrderRefViewSet)
 router.register("cards", StatCardViewSet)
+router.register("card-sets", CardSetViewSet)
 router.register("performance", PostPerformanceViewSet)
 router.register("experiments", GrowthExperimentViewSet)
+router.register("playbooks", PlaybookViewSet)
+router.register("kpi-targets", KpiTargetViewSet)
+router.register("boosts", BoostViewSet)
+router.register("hashtag-sets", HashtagSetViewSet)
 router.register("growth/instagram/posts", InstagramPostViewSet, basename="instagram-posts")
 
 urlpatterns = [
@@ -62,6 +75,7 @@ urlpatterns = [
     path("api/config/", public_config),
     path("api/integrations/", integration_list),
     path("api/integrations/google-analytics/sync/", sync_google_analytics),
+    path("api/integrations/google-search-console/sync/", sync_google_search_console),
     path("api/integrations/<slug:provider>/", integration_detail),
     path("api/backup/export/", backup_export, name="backup_export"),
     path("api/backup/database/", backup_database, name="backup_database"),
@@ -72,6 +86,7 @@ urlpatterns = [
     # Organic growth studio.
     path("api/growth/meta/", GrowthMetaView.as_view()),
     path("api/growth/players/", GrowthPlayersView.as_view()),
+    path("api/growth/teams/", GrowthTeamsView.as_view()),
     path("api/growth/suggest/", GrowthSuggestView.as_view()),
     path("api/growth/cards/preview/", CardPreviewView.as_view()),
     path("api/growth/captions/", CaptionDraftView.as_view()),
@@ -80,6 +95,7 @@ urlpatterns = [
     path("api/growth/insights/", GrowthInsightsView.as_view()),
     path("api/growth/traffic/", GrowthTrafficView.as_view()),
     path("api/growth/traffic/sync/", GrowthTrafficSyncView.as_view()),
+    path("api/growth/search-console/", GrowthSearchConsoleView.as_view()),
     # Instagram audience research (comments on public posts).
     path("api/growth/instagram/comments/", InstagramCommentListView.as_view()),
     path("api/growth/instagram/analysis/", InstagramAnalysisView.as_view()),

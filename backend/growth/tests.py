@@ -21,7 +21,7 @@ from channels.models import Channel
 from content.models import ContentItem
 from google_sync import ga4
 from growth.analytics import flatten, group_by, group_stats
-from growth.builders import build_spec, team_short
+from growth.builders import build_spec, build_team_card, build_top8_table, team_short
 from growth.cards import SIZES, render_card
 from growth.captions import build_captions
 from growth.datasource import CACHE_VERSION, CatchAndStatsClient, DatasourceError, cache_dir, priority_country, _write_cache
@@ -38,14 +38,21 @@ from growth.instagram import (
 from growth.instagram_service import CommentSyncResult, sync_post
 from growth.metrics import format_metric
 from growth.models import (
+    Boost,
+    CardSet,
     GrowthExperiment,
     InstagramComment,
     InstagramTrackedPost,
+    KpiTarget,
+    Playbook,
+    PlaybookSlot,
     PostPerformance,
+    SearchConsoleSnapshot,
     StatCard,
     TrafficSnapshot,
 )
 from growth.planning import site_link
+from growth.search_console import SearchConsoleResult, build_report, sync_search_console
 from growth.sources import platform_for_source
 from growth.traffic import TrafficResult, sync_organic
 from plans.models import Task
@@ -319,11 +326,39 @@ class GrowthApiTests(MediaIsolationMixin, APITestCase):
         response = self.client.get("/api/growth/report/?days=30&campaign=not-a-number")
         self.assertEqual(response.status_code, 200)
 
+    @patch("growth.views.search_console_service.build_report")
+    def test_report_uses_search_console_for_kpi_actuals(self, mock_search):
+        KpiTarget.objects.create(campaign=self.campaign, metric="search_clicks", target=20)
+        mock_search.return_value = {
+            "totals": {"clicks": 15, "impressions": 150, "ctr": 0.1},
+            "campaign": {"totals": {"clicks": 15, "impressions": 150, "ctr": 0.1}},
+        }
+        body = self.client.get(
+            f"/api/growth/report/?days=30&campaign={self.campaign.id}"
+        ).json()
+        row = next(item for item in body["kpi_targets"] if item["metric"] == "search_clicks")
+        self.assertEqual(row["actual"], 15)
+        self.assertAlmostEqual(row["progress"], 0.75)
+        self.assertIn("search_console", body)
+
     def test_site_link_keeps_utm_parameters(self):
         link = site_link("https://catchandstats.com", "reddit", "euroleague-organic")
         self.assertEqual(
             link,
             "https://catchandstats.com/?utm_source=reddit&utm_medium=social&utm_campaign=euroleague-organic",
+        )
+
+    def test_site_link_can_target_a_landing_path(self):
+        link = site_link(
+            "https://catchandstats.com/",
+            "x",
+            "top8",
+            "thread_en",
+            path="team-advanced-stats/",
+        )
+        self.assertEqual(
+            link,
+            "https://catchandstats.com/team-advanced-stats?utm_source=x&utm_medium=social&utm_campaign=top8&utm_content=thread_en",
         )
 
 
@@ -556,7 +591,7 @@ class GrowthTrafficTests(APITestCase):
 
         self.assertEqual(
             [dimension["name"] for dimension in captured["body"]["dimensions"]],
-            ["date", "sessionSource", "sessionMedium"],
+            ["date", "sessionSource", "sessionMedium", "sessionCampaignName", "sessionManualAdContent"],
         )
         self.assertEqual(
             captured["body"]["dateRanges"], [{"startDate": "2026-10-01", "endDate": "2026-10-07"}]
@@ -661,6 +696,160 @@ class GrowthTrafficTests(APITestCase):
         self.assertEqual(body["results"][0]["platform"], "x")
         self.assertFalse(body["can_sync"])
         self.assertIsNotNone(body["last_synced_at"])
+
+
+SITE_URL = "sc-domain:catchandstats.com"
+
+
+class SearchConsoleTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="gsc-user", password="pw")
+        self.admin = get_user_model().objects.create_user(
+            username="gsc-admin", password="pw", is_staff=True
+        )
+
+    @mock.patch("growth.search_console.gsc.fetch_snapshot")
+    @mock.patch("growth.search_console.get_credential_config", return_value={"site_url": SITE_URL})
+    @mock.patch("growth.search_console.get_credential_value", return_value="{}")
+    def test_sync_is_idempotent(self, _value, _config, mock_fetch):
+        rows = [
+            {
+                "date": date(2026, 10, 10),
+                "scope": "total",
+                "page_url": "",
+                "page_path": "",
+                "query": "",
+                "clicks": 12,
+                "impressions": 300,
+                "ctr": 0.04,
+                "position": 4.2,
+            },
+            {
+                "date": date(2026, 10, 10),
+                "scope": "page",
+                "page_url": "https://catchandstats.com/team/",
+                "page_path": "/team",
+                "query": "",
+                "clicks": 10,
+                "impressions": 200,
+                "ctr": 0.05,
+                "position": 3.0,
+            },
+            {
+                "date": date(2026, 10, 10),
+                "scope": "query",
+                "page_url": "",
+                "page_path": "",
+                "query": "euroleague top 8",
+                "clicks": 4,
+                "impressions": 50,
+                "ctr": 0.08,
+                "position": 2.0,
+            },
+        ]
+        mock_fetch.return_value = rows
+
+        first = sync_search_console(days=7, today=date(2026, 10, 10))
+        second = sync_search_console(days=7, today=date(2026, 10, 10))
+
+        self.assertEqual((first.created, first.updated), (3, 0))
+        self.assertEqual((second.created, second.updated), (0, 3))
+        self.assertEqual(first.clicks, 12)
+        self.assertEqual(first.impressions, 300)
+        self.assertEqual(first.pages, 1)
+        self.assertEqual(first.queries, 1)
+        self.assertEqual(SearchConsoleSnapshot.objects.count(), 3)
+        self.assertEqual(SearchConsoleSnapshot.objects.get(scope="page").page_path, "/team")
+
+    def _campaign_with_link(self, link: str, name: str = "GSC campaign") -> Campaign:
+        campaign = Campaign.objects.create(
+            name=name,
+            utm_campaign="gsc-campaign",
+            start_date=date(2026, 10, 1),
+            end_date=date(2026, 10, 10),
+        )
+        ContentItem.objects.create(campaign=campaign, title="Post", link=link)
+        return campaign
+
+    @mock.patch("growth.search_console.credential_status", return_value={"configured": True})
+    @mock.patch("growth.search_console.get_credential_config", return_value={"site_url": SITE_URL})
+    def test_report_maps_campaign_through_linked_pages(self, _config, _status):
+        campaign = self._campaign_with_link(
+            "https://catchandstats.com/team/?utm_source=x&utm_campaign=gsc-campaign"
+        )
+        for path, clicks, impressions in (("/team", 20, 200), ("/other", 9, 90)):
+            SearchConsoleSnapshot.objects.create(
+                date=date(2026, 10, 5),
+                site_url=SITE_URL,
+                scope="page",
+                page_url=f"https://catchandstats.com{path}",
+                page_path=path,
+                clicks=clicks,
+                impressions=impressions,
+                ctr=clicks / impressions,
+                position=3.0,
+            )
+
+        report = build_report(campaign=campaign, today=date(2026, 10, 15))
+
+        self.assertEqual(report["campaign"]["pages"], ["/team"])
+        self.assertEqual(report["campaign"]["totals"]["clicks"], 20)
+        self.assertEqual(report["campaign"]["totals"]["impressions"], 200)
+        self.assertAlmostEqual(report["campaign"]["totals"]["ctr"], 0.1)
+        self.assertEqual(report["campaign"]["by_page"][0]["page_path"], "/team")
+        self.assertTrue(report["campaign"]["matched"])
+        self.assertEqual(report["campaign"]["warning"], "")
+
+    @mock.patch("growth.search_console.credential_status", return_value={"configured": True})
+    @mock.patch("growth.search_console.get_credential_config", return_value={"site_url": SITE_URL})
+    def test_report_warns_when_all_links_are_homepage(self, _config, _status):
+        campaign = self._campaign_with_link("https://catchandstats.com/?utm_campaign=gsc-campaign")
+        SearchConsoleSnapshot.objects.create(
+            date=date(2026, 10, 5),
+            site_url=SITE_URL,
+            scope="page",
+            page_url="https://catchandstats.com/",
+            page_path="/",
+            clicks=5,
+            impressions=50,
+            ctr=0.1,
+            position=2.0,
+        )
+
+        report = build_report(campaign=campaign, today=date(2026, 10, 15))
+
+        self.assertEqual(report["campaign"]["pages"], ["/"])
+        self.assertIn("homepage", report["campaign"]["warning"])
+
+    @mock.patch("growth.search_console.sync_search_console")
+    def test_sync_endpoint_reports_the_snapshot(self, mock_sync):
+        mock_sync.return_value = SearchConsoleResult(
+            created=2,
+            rows=2,
+            pages=1,
+            queries=1,
+            clicks=11,
+            impressions=100,
+            start="2026-10-01",
+            end="2026-10-10",
+            site_url=SITE_URL,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/integrations/google-search-console/sync/", {"days": 7}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["clicks"], 11)
+        self.assertEqual(response.json()["unmatched"], [])
+
+    def test_sync_endpoint_requires_staff(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post("/api/integrations/google-search-console/sync/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_report_endpoint_requires_authentication(self):
+        self.assertEqual(self.client.get("/api/growth/search-console/").status_code, 401)
 
 
 class DatasourceHardeningTests(SimpleTestCase):
@@ -1151,3 +1340,217 @@ class InstagramResearchTests(APITestCase):
         with mock.patch("growth.views._seasons", return_value=([], "")):
             body = self.client.get("/api/growth/meta/").json()
         self.assertIn("instagram_configured", body)
+
+class PlaybookRunTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="playbook-user", password="pw")
+        self.client.force_authenticate(self.user)
+        Channel.objects.create(name="Instagram", channel_type="instagram")
+        Channel.objects.create(name="X", channel_type="x")
+        self.playbook = Playbook.objects.create(
+            name="Test series",
+            description="A series",
+            default_locales=["el", "en"],
+            default_platforms=["instagram", "x"],
+        )
+        PlaybookSlot.objects.create(
+            playbook=self.playbook,
+            order=0,
+            day_offset=0,
+            time="20:00",
+            platform="instagram",
+            format="carousel",
+            content_kind="top8",
+            locales=["el"],
+            title_template="Hero carousel — {round}",
+            brief="Cover, eight teams, CTA.",
+            utm_content_template="carousel_el",
+        )
+        PlaybookSlot.objects.create(
+            playbook=self.playbook,
+            order=1,
+            day_offset=2,
+            time="21:00",
+            platform="x",
+            format="thread",
+            content_kind="top8",
+            locales=[],
+            title_template="Thread — {round}",
+            brief="Eight tweets.",
+            utm_content_template="thread_{locale}",
+        )
+
+    def test_preview_uses_start_date_and_utm_content(self):
+        response = self.client.post(
+            f"/api/playbooks/{self.playbook.id}/preview/",
+            {
+                "start_date": "2026-11-04",
+                "round_label": "Round 8",
+                "locales": ["el", "en"],
+                "platforms": ["instagram", "x"],
+                "utm_campaign": "top8_r8",
+                "landing_path": "top8",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(body["count"], 3)  # IG is Greek only; X has two locales.
+        self.assertEqual(body["start_date"], "2026-11-04")
+        self.assertEqual(body["end_date"], "2026-11-06")
+        self.assertEqual(body["landing_path"], "/top8")
+        instagram = next(item for item in body["items"] if item["platform"] == "instagram")
+        self.assertIn("Round 8", instagram["title"])
+        self.assertEqual(instagram["utm_content"], "carousel_el")
+        self.assertIn("utm_content=carousel_el", instagram["link"])
+        self.assertTrue(instagram["link"].startswith("https://catchandstats.com/top8?"))
+        x_titles = [item["title"] for item in body["items"] if item["platform"] == "x"]
+        self.assertEqual(len(x_titles), 2)
+        self.assertTrue(any("[EN]" in title for title in x_titles))
+
+    def test_run_creates_new_campaign_each_time(self):
+        first = self.client.post(
+            f"/api/playbooks/{self.playbook.id}/run/",
+            {"start_date": "2026-11-04", "round_label": "Round 8"},
+            format="json",
+        )
+        second = self.client.post(
+            f"/api/playbooks/{self.playbook.id}/run/",
+            {"start_date": "2026-11-18", "round_label": "Round 10"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertNotEqual(first.json()["campaign"]["id"], second.json()["campaign"]["id"])
+        self.assertEqual(ContentItem.objects.count(), 6)
+        self.assertEqual(Campaign.objects.count(), 2)
+        self.assertEqual(Task.objects.count(), 6)
+        self.assertEqual(KpiTarget.objects.count(), 20)
+
+    def test_paid_slot_creates_a_planned_boost(self):
+        slot = self.playbook.slots.first()
+        slot.paid_budget = "150.00"
+        slot.save(update_fields=["paid_budget"])
+        response = self.client.post(
+            f"/api/playbooks/{self.playbook.id}/run/",
+            {"start_date": "2026-11-04", "round_label": "Round 8"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["boosts_created"], 1)
+        self.assertEqual(Boost.objects.count(), 1)
+        boost = Boost.objects.get()
+        self.assertEqual(float(boost.total_budget), 150.0)
+        self.assertEqual(boost.status, "planned")
+
+    def test_duplicate_copies_slots_without_touching_source(self):
+        response = self.client.post(
+            f"/api/playbooks/{self.playbook.id}/duplicate/",
+            {"name": "Copy"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        clone = Playbook.objects.get(name="Copy")
+        self.assertEqual(clone.slots.count(), self.playbook.slots.count())
+        self.assertFalse(clone.is_seeded)
+        self.assertEqual(self.playbook.slots.count(), 2)
+
+
+class TeamBuilderTests(SimpleTestCase):
+    def test_top8_sorts_by_record_then_net_rating(self):
+        teams = [
+            {"team_title": "Alpha", "team_id": 1, "wins": 5, "losses": 2, "net_rating": 9.0, "games": 7, "season_title": "2026-2027"},
+            {"team_title": "Beta", "team_id": 2, "wins": 6, "losses": 1, "net_rating": 2.0, "games": 7, "season_title": "2026-2027"},
+            {"team_title": "Gamma", "team_id": 3, "wins": 5, "losses": 2, "net_rating": 14.0, "games": 7, "season_title": "2026-2027"},
+        ]
+        table = build_top8_table(teams, top_n=3)
+        self.assertEqual([row["team"] for row in table["rows"]], ["Beta", "Gamma", "Alpha"])
+        self.assertEqual(table["rows"][1]["record"], "5-2")
+
+    def test_team_card_includes_previous_season_note(self):
+        team = {
+            "team_title": "Panathinaikos AKTOR Athens",
+            "team_id": 6,
+            "wins": 6,
+            "losses": 1,
+            "record": "6-1",
+            "net_rating": 18.4,
+            "offensive_rating": 117.33,
+            "defensive_rating": 98.93,
+            "ts_pct": 0.603,
+            "efg_pct": 0.571,
+            "tov_pct": 0.139,
+            "season_title": "2026-2027",
+        }
+        previous = {"team_title": "Panathinaikos AKTOR Athens", "offensive_rating": 115.0}
+        card = build_team_card(team, previous=previous, rank=1, total=8)
+        self.assertEqual(card["title"], "Panathinaikos")
+        self.assertEqual(card["headline"], "18.40")
+        self.assertIn("#1 of 8", card["headline_note"])
+        self.assertTrue(any("last season" in row["note"] for row in card["rows"]))
+
+
+class CaptionPlatformTests(SimpleTestCase):
+    def test_new_platforms_and_x_thread(self):
+        spec = {
+            "kind": "top8",
+            "title": "Top 8 after 7 rounds",
+            "rows": [
+                {"team": f"Team {index}", "record": "6-1", "net": f"{10 - index}.00"}
+                for index in range(1, 9)
+            ],
+        }
+        drafts = build_captions(spec, link="https://example.com/?utm_campaign=x", platforms=("x", "facebook", "youtube"), locales=("en",))
+        self.assertEqual({draft["platform"] for draft in drafts}, {"x", "facebook", "youtube"})
+        x = next(draft for draft in drafts if draft["platform"] == "x")
+        self.assertGreater(len(x["thread"]), 8)
+        self.assertTrue(all(len(tweet) <= 280 for tweet in x["thread"]))
+        facebook = next(draft for draft in drafts if draft["platform"] == "facebook")
+        self.assertIn("Top 8", facebook["text"])
+        youtube = next(draft for draft in drafts if draft["platform"] == "youtube")
+        self.assertTrue(youtube["title"])
+
+
+class CardSetApiTests(APITestCase):
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        self.user = get_user_model().objects.create_user(username="set-user", password="pw")
+        self.client.force_authenticate(self.user)
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def test_create_and_download_zip(self):
+        specs = [
+            {"kind": "top8", "title": "Cover", "subtitle": "2026-2027", "rows": []},
+            {
+                "kind": "top8",
+                "layout": "table",
+                "title": "Table",
+                "subtitle": "Net rating",
+                "columns": ["#", "Team", "Rec", "Net"],
+                "rows": [
+                    {"rank": 1, "team": "Alpha", "record": "6-1", "net": "18.40", "value": "18.40"},
+                    {"rank": 2, "team": "Beta", "record": "5-2", "net": "9.20", "value": "9.20"},
+                ],
+            },
+        ]
+        response = self.client.post(
+            "/api/card-sets/",
+            {"format": "instagram", "title": "Test set", "specs": specs},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(len(body["slides"]), 2)
+        self.assertTrue(all(slide["image_url"] for slide in body["slides"]))
+        self.assertEqual(CardSet.objects.count(), 1)
+        self.assertEqual(StatCard.objects.count(), 2)
+
+        download = self.client.get(f"/api/card-sets/{body['id']}/download/")
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download["Content-Type"], "application/zip")
+        self.assertTrue(download.content.startswith(b"PK"))

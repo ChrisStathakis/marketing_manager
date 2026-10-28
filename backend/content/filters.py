@@ -11,4 +11,4 @@ class ContentItemFilter(django_filters.FilterSet):
 
     class Meta:
         model = ContentItem
-        fields = ["campaign", "channel", "status"]
+        fields = ["campaign", "channel", "status", "locale", "format", "content_kind", "card_set"]

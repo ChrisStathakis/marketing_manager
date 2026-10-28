@@ -27,6 +27,12 @@ const schema = z.object({
   utm_source: z.string().trim().max(255),
   utm_medium: z.string().trim().max(255),
   utm_campaign: z.string().trim().max(255),
+  utm_content: z.string().trim().max(255),
+  locale: z.string(),
+  format: z.string(),
+  content_kind: z.string(),
+  thread: z.string(),
+  notes: z.string(),
   status: z.enum(['draft', 'scheduled', 'published']),
   publish_at: z.string(),
 });
@@ -54,6 +60,12 @@ function defaults(item: ContentItem | null | undefined, defaultCampaignId?: numb
     utm_source: item?.utm_source ?? '',
     utm_medium: item?.utm_medium ?? '',
     utm_campaign: item?.utm_campaign ?? '',
+    utm_content: item?.utm_content ?? '',
+    locale: item?.locale ?? '',
+    format: item?.format ?? '',
+    content_kind: item?.content_kind ?? '',
+    thread: item?.thread?.join('\n\n') ?? '',
+    notes: item?.notes ?? '',
     status: item?.status ?? 'draft',
     publish_at: item ? toDateTimeLocalValue(item.publish_at) : defaultDate ? `${defaultDate}T12:00` : '',
   };
@@ -91,6 +103,15 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
         utm_source: values.utm_source,
         utm_medium: values.utm_medium,
         utm_campaign: values.utm_campaign,
+        utm_content: values.utm_content,
+        locale: values.locale,
+        format: values.format,
+        content_kind: values.content_kind,
+        thread: values.thread
+          .split(/\n\s*\n/)
+          .map((tweet) => tweet.trim())
+          .filter(Boolean),
+        notes: values.notes,
         status: values.status,
         publish_at: dateTimeLocalToISO(values.publish_at),
       };
@@ -108,9 +129,10 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
   const utmSource = useWatch({ control, name: 'utm_source' });
   const utmMedium = useWatch({ control, name: 'utm_medium' });
   const utmCampaign = useWatch({ control, name: 'utm_campaign' });
+  const utmContent = useWatch({ control, name: 'utm_content' });
   const preview =
-    link && (utmSource || utmMedium || utmCampaign)
-      ? `${link}?utm_source=${encodeURIComponent(utmSource)}&utm_medium=${encodeURIComponent(utmMedium)}&utm_campaign=${encodeURIComponent(utmCampaign)}`
+    link && (utmSource || utmMedium || utmCampaign || utmContent)
+      ? `${link}?utm_source=${encodeURIComponent(utmSource)}&utm_medium=${encodeURIComponent(utmMedium)}&utm_campaign=${encodeURIComponent(utmCampaign)}${utmContent ? `&utm_content=${encodeURIComponent(utmContent)}` : ''}`
       : null;
 
   const onCampaignChange = (value: string) => {
@@ -193,6 +215,21 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
           <Field label="Copy / caption" htmlFor="content-copy" error={errors.copy?.message}>
             <Textarea id="content-copy" rows={3} placeholder="Caption text, hashtags, CTA…" {...register('copy')} />
           </Field>
+          <Field
+            label="X / thread"
+            htmlFor="content-thread"
+            hint="One tweet per blank line. Copied straight into the post when it is time."
+          >
+            <Textarea
+              id="content-thread"
+              rows={4}
+              placeholder={'1/ The number first…\n\n2/ The context…\n\n3/ Full table →'}
+              {...register('thread')}
+            />
+          </Field>
+          <Field label="Internal notes" htmlFor="content-notes">
+            <Textarea id="content-notes" rows={2} placeholder="Asset owner, approval, source…" {...register('notes')} />
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Status" error={errors.status?.message}>
               <Controller
@@ -225,6 +262,77 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Language">
+              <Controller
+                control={control}
+                name="locale"
+                render={({ field }) => (
+                  <Select value={field.value || 'none'} onValueChange={(value) => field.onChange(value === 'none' ? '' : value)}>
+                    <SelectTrigger aria-label="Language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not set</SelectItem>
+                      <SelectItem value="el">Ελληνικά</SelectItem>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="tr">Türkçe</SelectItem>
+                      <SelectItem value="sr">Srpski</SelectItem>
+                      <SelectItem value="lt">Lietuvių</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </Field>
+            <Field label="Format">
+              <Controller
+                control={control}
+                name="format"
+                render={({ field }) => (
+                  <Select value={field.value || 'none'} onValueChange={(value) => field.onChange(value === 'none' ? '' : value)}>
+                    <SelectTrigger aria-label="Format">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not set</SelectItem>
+                      <SelectItem value="post">Feed post</SelectItem>
+                      <SelectItem value="carousel">Carousel</SelectItem>
+                      <SelectItem value="reel">Reel / short video</SelectItem>
+                      <SelectItem value="story">Story</SelectItem>
+                      <SelectItem value="thread">Thread</SelectItem>
+                      <SelectItem value="photo_carousel">Photo carousel</SelectItem>
+                      <SelectItem value="short">Short video</SelectItem>
+                      <SelectItem value="text_post">Text post</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </Field>
+            <Field label="Card type" hint="Optional — links to the growth card.">
+              <Controller
+                control={control}
+                name="content_kind"
+                render={({ field }) => (
+                  <Select value={field.value || 'none'} onValueChange={(value) => field.onChange(value === 'none' ? '' : value)}>
+                    <SelectTrigger aria-label="Card type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not set</SelectItem>
+                      <SelectItem value="top8">Top 8</SelectItem>
+                      <SelectItem value="team">Team card</SelectItem>
+                      <SelectItem value="team_delta">Team season delta</SelectItem>
+                      <SelectItem value="round_recap">Round recap</SelectItem>
+                      <SelectItem value="player">Player card</SelectItem>
+                      <SelectItem value="metric">Metric</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-4">
             <Field label="UTM source" htmlFor="content-utm-source" error={errors.utm_source?.message}>
               <Input id="content-utm-source" placeholder="instagram" {...register('utm_source')} />
             </Field>
@@ -232,7 +340,10 @@ export function ContentItemDialog({ open, onOpenChange, item, defaultCampaignId,
               <Input id="content-utm-medium" placeholder="social" {...register('utm_medium')} />
             </Field>
             <Field label="UTM campaign" htmlFor="content-utm-campaign" error={errors.utm_campaign?.message}>
-              <Input id="content-utm-campaign" placeholder="fall-baskets" {...register('utm_campaign')} />
+              <Input id="content-utm-campaign" placeholder="top8-r7" {...register('utm_campaign')} />
+            </Field>
+            <Field label="UTM content" htmlFor="content-utm-content" error={errors.utm_content?.message}>
+              <Input id="content-utm-content" placeholder="carousel_el" {...register('utm_content')} />
             </Field>
           </div>
           {preview && (

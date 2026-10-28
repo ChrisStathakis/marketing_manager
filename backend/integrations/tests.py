@@ -42,7 +42,10 @@ class IntegrationCredentialTests(APITestCase):
         self.client.force_authenticate(self.user)
         r = self.client.get(URL)
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual({item["id"] for item in r.data}, {"openai", "google-analytics", "instagram"})
+        self.assertEqual(
+            {item["id"] for item in r.data},
+            {"openai", "google-analytics", "google-search-console", "instagram"},
+        )
         entry = self.entry("openai")
         self.assertFalse(entry["configured"])
         self.assertIsNone(entry["source"])

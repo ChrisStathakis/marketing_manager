@@ -115,6 +115,65 @@ INTEGRATIONS = [
         ),
     },
     {
+        "id": "google-search-console",
+        "label": "Google Search Console",
+        "summary": "Organic search clicks, impressions, pages and queries",
+        "description": (
+            "Pulls Google organic search performance into the growth report: clicks, "
+            "impressions, CTR, average position, top pages and top queries. Search "
+            "Console has no UTM/campaign dimension, so campaign reports join it through "
+            "the canonical pages linked by the campaign and label the result as assisted "
+            "search — use GA4 for true UTM attribution."
+        ),
+        "env_var": "GOOGLE_SEARCH_CONSOLE_CREDENTIALS",
+        "used_by": [
+            "POST /api/integrations/google-search-console/sync/",
+            "GET /api/growth/search-console/",
+        ],
+        "where_to_get": "https://search.google.com/search-console",
+        "sync_endpoint": "/integrations/google-search-console/sync/",
+        "fields": [
+            {
+                "name": "credentials_json",
+                "label": "Service account JSON",
+                "secret": True,
+                "multiline": True,
+                "min_length": 32,
+                "placeholder": '{"type": "service_account", "project_id": "…"}',
+                "hint_key": "client_email",
+                "hint": (
+                    "Paste the whole service-account key file (JSON). The same account can "
+                    "be used for GA4. It is stored encrypted and never shown again."
+                ),
+            },
+        ],
+        "config_fields": [
+            {
+                "name": "site_url",
+                "label": "Search Console property",
+                "env_var": "GOOGLE_SEARCH_CONSOLE_SITE_URL",
+                "placeholder": "sc-domain:catchandstats.com",
+                "required": True,
+                "hint": (
+                    "Use the exact property string: sc-domain:example.com for a Domain "
+                    "property, or https://www.example.com/ for a URL-prefix property."
+                ),
+            },
+        ],
+        "steps": [
+            "In Google Cloud, enable the “Google Search Console API” (you can reuse the GA4 project).",
+            "Create a service account and download a JSON key, or reuse the GA4 service account.",
+            "In Search Console → Settings → Users and permissions, add the service-account client_email as Full or Restricted user.",
+            "Paste the JSON and the exact property here, then use “Sync now”.",
+        ],
+        "security_note": (
+            "The key file is stored server-side only, encrypted at rest, and never returned by "
+            "the API. The service account only needs read access to this Search Console property; "
+            "rotating DJANGO_SECRET_KEY makes the stored key unreadable — re-enter it after a "
+            "rotation."
+        ),
+    },
+    {
         "id": "instagram",
         "label": "Instagram (session)",
         "summary": "Who commented on a public post — audience research",

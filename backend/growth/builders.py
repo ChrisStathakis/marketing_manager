@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from .datasource import COUNTRY_LABELS, find_player, priority_country
+from .datasource import COUNTRY_LABELS, find_player, find_team, priority_country
 from .metrics import (
     DEFAULT_PLAYER_METRICS,
     METRICS,
@@ -323,6 +323,186 @@ def build_matchup_card(team_a: dict, team_b: dict) -> dict:
     }
 
 
+def _team_record(team: dict) -> str:
+    if team.get("record"):
+        return str(team["record"])
+    wins, losses = team.get("wins"), team.get("losses")
+    if wins is not None and losses is not None:
+        return f"{wins}-{losses}"
+    return ""
+
+
+def _team_ranked(teams: list[dict]) -> list[dict]:
+    """Record first, net rating second — the order the plan's table uses."""
+    return sorted(
+        teams,
+        key=lambda team: (
+            team.get("wins") or 0,
+            team.get("net_rating") if team.get("net_rating") is not None else -999,
+        ),
+        reverse=True,
+    )
+
+
+def build_team_card(
+    team: dict,
+    previous: dict | None = None,
+    rank: int | None = None,
+    total: int | None = None,
+) -> dict:
+    """A four-factors profile slide for one club, with last season's number."""
+    keys = ("offensive_rating", "defensive_rating", "ts_pct", "efg_pct", "tov_pct")
+    rows = []
+    for key in keys:
+        value = value_of(team, key)
+        prev_value = value_of(previous, key) if previous else None
+        note = (
+            f"last season {format_metric(key, prev_value)}"
+            if prev_value is not None
+            else ""
+        )
+        rows.append(
+            {
+                "key": key,
+                "label": metric_label(key),
+                "value": format_metric(key, value),
+                "note": note,
+            }
+        )
+
+    record = _team_record(team)
+    headline_note = ""
+    if rank:
+        headline_note = f"#{rank} of {total}" if total else f"#{rank}"
+        if record:
+            headline_note += f" · {record}"
+    elif record:
+        headline_note = record
+
+    return {
+        "kind": "team",
+        "eyebrow": "Team check",
+        "title": team_short(team.get("team_title")),
+        "subtitle": f"{team.get('team_title') or ''} · {season_short(team.get('season_title'))}".strip(" ·"),
+        "headline": format_metric("net_rating", team.get("net_rating")),
+        "headline_label": metric_label("net_rating"),
+        "headline_key": "net_rating",
+        "headline_note": headline_note,
+        "rows": rows,
+        "footer": _footer(),
+        "accent": ACCENT,
+        "team_id": team.get("team_id") or team.get("id"),
+    }
+
+
+def build_top8_table(
+    teams: list[dict],
+    *,
+    top_n: int = 8,
+    title: str | None = None,
+    rounds: int | None = None,
+) -> dict:
+    """The one-slide table for Reddit/X, with eight rows and no dropped teams."""
+    ranked = _team_ranked(teams)[: max(1, top_n)]
+    if not ranked:
+        raise ValueError("No team rows for this season yet.")
+    games = rounds or max((team.get("games") or 0 for team in ranked), default=0)
+    season = season_short(ranked[0].get("season_title"))
+    rows = []
+    for index, team in enumerate(ranked, start=1):
+        net = team.get("net_rating")
+        rows.append(
+            {
+                "rank": index,
+                "team": team_short(team.get("team_title")),
+                "team_full": team.get("team_title") or "",
+                "record": _team_record(team),
+                "net": format_metric("net_rating", net),
+                "value": format_metric("net_rating", net),
+                "label": team_short(team.get("team_title")),
+                "note": f"{_team_record(team)} · {format_metric('net_rating', net)}".strip(" ·"),
+                "team_id": team.get("team_id") or team.get("id"),
+            }
+        )
+    default_title = f"Top {len(ranked)} — {season}" if season else f"Top {len(ranked)}"
+    return {
+        "kind": "top8",
+        "layout": "table",
+        "eyebrow": "Top 8",
+        "title": title or default_title,
+        "subtitle": f"Net rating · after {games} games" if games else "Net rating · season to date",
+        "columns": ["#", "Team", "Rec", "Net"],
+        "rows": rows,
+        "footer": _footer(),
+        "accent": ACCENT,
+    }
+
+
+def build_top8_carousel(
+    teams: list[dict],
+    *,
+    top_n: int = 8,
+    previous_teams: list[dict] | None = None,
+    title: str | None = None,
+    include_table: bool = False,
+    include_cta: bool = True,
+) -> list[dict]:
+    """Cover + one slide per team (+ table/CTA), ready to render as a set."""
+    ranked = _team_ranked(teams)[: max(1, top_n)]
+    if not ranked:
+        raise ValueError("No team rows for this season yet.")
+    previous_by_key = {
+        str(team.get("team_id") or team.get("team_title")): team
+        for team in (previous_teams or [])
+    }
+    season = season_short(ranked[0].get("season_title"))
+    games = max((team.get("games") or 0 for team in ranked), default=0)
+    cover_title = title or (f"Top {len(ranked)} after {games} rounds" if games else f"Top {len(ranked)} — {season}")
+    best = ranked[0]
+    cover = {
+        "kind": "top8",
+        "eyebrow": "Top 8",
+        "title": cover_title,
+        "subtitle": f"{season} · record first, then net rating",
+        "headline": format_metric("net_rating", best.get("net_rating")),
+        "headline_label": metric_label("net_rating"),
+        "headline_note": f"{team_short(best.get('team_title'))} · {_team_record(best)}".strip(" ·"),
+        "rows": [
+            {
+                "key": "net_rating",
+                "label": team_short(team.get("team_title")),
+                "value": format_metric("net_rating", team.get("net_rating")),
+                "note": _team_record(team),
+            }
+            for team in ranked[:3]
+        ],
+        "footer": _footer(),
+        "accent": ACCENT,
+    }
+    specs = [cover]
+    for index, team in enumerate(ranked, start=1):
+        previous = previous_by_key.get(str(team.get("team_id") or team.get("team_title")))
+        specs.append(build_team_card(team, previous=previous, rank=index, total=len(ranked)))
+    if include_table:
+        specs.append(build_top8_table(ranked, top_n=len(ranked), title=cover_title, rounds=games))
+    if include_cta:
+        specs.append(
+            {
+                "kind": "top8",
+                "eyebrow": "Your turn",
+                "title": "Which team keeps it up?",
+                "subtitle": "Full profiles, four factors and last season's numbers.",
+                "headline": "catchandstats.com",
+                "headline_label": "All 20 teams",
+                "rows": [],
+                "footer": _footer(),
+                "accent": ACCENT_WARM,
+            }
+        )
+    return specs
+
+
+
 def default_story(today: date | None = None) -> str:
     moment = today or date.today()
     return STORY_METRICS[moment.toordinal() % len(STORY_METRICS)]
@@ -339,8 +519,45 @@ def build_spec(
     story: str | None = None,
     teams: list[str] | None = None,
     title: str | None = None,
+    previous_table: dict | None = None,
+    top_n: int = 8,
 ) -> dict:
     """Build the spec for any card kind, auto-picking what the caller omits."""
+    if kind in ("team", "team_delta", "top8"):
+        chosen = teams or []
+        previous_by_key = {
+            str(team.get("team_id") or team.get("team_title")): team
+            for team in (previous_table or {}).get("teams", [])
+        }
+        if kind == "top8":
+            return build_top8_table(
+                table.get("teams") or [],
+                top_n=top_n,
+                title=title,
+            )
+        team_rows = _team_ranked(table.get("teams") or [])
+        if chosen:
+            team = find_team(table, chosen[0])
+            if team is None:
+                raise ValueError(f"No team matching {chosen[0]!r} in this season.")
+        else:
+            team = team_rows[0] if team_rows else _pick_team(table)
+        rank = next(
+            (
+                index
+                for index, row in enumerate(team_rows, start=1)
+                if str(row.get("team_id") or row.get("team_title"))
+                == str(team.get("team_id") or team.get("team_title"))
+            ),
+            None,
+        )
+        previous = previous_by_key.get(str(team.get("team_id") or team.get("team_title")))
+        card = build_team_card(team, previous=previous, rank=rank, total=len(team_rows))
+        if kind == "team_delta":
+            card["kind"] = "team_delta"
+            card["eyebrow"] = "Then vs now"
+        return card
+
     explicit_story = story or metric
     story = explicit_story or default_story()
     if story not in METRICS:

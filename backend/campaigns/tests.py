@@ -78,6 +78,43 @@ class CampaignFlowTests(APITestCase):
         self.assertEqual(d.data["revenue"], 120.0)
 
 
+class CampaignDuplicateTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="duplicator", password="pw123456")
+        self.client.force_authenticate(self.user)
+
+    def test_duplicate_copies_landing_path_and_rewrites_utm_campaign(self):
+        start = timezone.localdate()
+        source = Campaign.objects.create(
+            name="Top 8 launch",
+            start_date=start,
+            end_date=start + timedelta(days=13),
+            utm_campaign="top8-round-7",
+            landing_path="/team-advanced-stats",
+            owner=self.user,
+        )
+        ContentItem.objects.create(
+            campaign=source,
+            title="Hero",
+            link="https://catchandstats.com/team-advanced-stats?utm_campaign=top8-round-7",
+        )
+
+        response = self.client.post(
+            f"/api/campaigns/{source.id}/duplicate/",
+            {
+                "start_date": (start + timedelta(days=14)).isoformat(),
+                "utm_campaign": "top8-round-8",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        clone = Campaign.objects.get(pk=response.json()["id"])
+        self.assertEqual(clone.landing_path, "/team-advanced-stats")
+        self.assertEqual(clone.utm_campaign, "top8-round-8")
+        self.assertIn("utm_campaign=top8-round-8", clone.items.get().link)
+
+
 class HealthConfigTests(APITestCase):
     def test_health_reports_database(self):
         r = self.client.get("/api/health/")
